@@ -53,6 +53,7 @@ export function buildStamp(o) {
   const relief = o.relief, base = o.baseThickness;
   const warnings = [];
   const parts = { relief: [], base: [], handle: [] };
+  const imprint = []; // everything that touches the paper, as groups in mm (reads correctly)
 
   // base plate: sits on top of the relief
   parts.base.push(extrudeShapes([outlineShape(o.shape, o.width, o.height, o.cornerRadius)], base + OVERLAP, relief - OVERLAP));
@@ -66,6 +67,8 @@ export function buildStamp(o) {
     const inner = outlineShape(o.shape, o.width - 2 * (inset + bw), o.height - 2 * (inset + bw), o.cornerRadius - inset - bw);
     outer.holes.push(new THREE.Path(inner.getPoints(48)));
     parts.relief.push(extrudeShapes([outer], relief + OVERLAP));
+    const xy = shape => shape.getPoints(48).map(p => [p.x, p.y]);
+    imprint.push({ outer: xy(outer), holes: [xy(inner)] });
     if (bw < 0.8) warnings.push(`Border is ${bw.toFixed(2)} mm wide - thinner than 2 nozzle widths (0.8 mm), it may print poorly.`);
   }
 
@@ -95,7 +98,7 @@ export function buildStamp(o) {
       if (effSize < 4) warnings.push(`Effective font size is ${effSize.toFixed(1)} mm - fine details may be lost at a 0.4 mm nozzle. Use a bolder font, a larger stamp, or less text.`);
     }
   }
-  if (art.length) parts.relief.push(extrudeShapes(groupsToShapes(art), relief + OVERLAP));
+  if (art.length) { parts.relief.push(extrudeShapes(groupsToShapes(art), relief + OVERLAP)); imprint.push(...art); }
   if (!parts.relief.length) warnings.push('Nothing to stamp yet - enter some text, add a logo, or enable the border.');
 
   // handle
@@ -134,5 +137,5 @@ export function buildStamp(o) {
   let tris = 0;
   group.traverse(c => { if (c.isMesh) tris += c.geometry.attributes.position.count / 3; });
   const height = top + (o.handle !== 'none' ? o.handleHeight : 0);
-  return { group, info: { width: o.width, depth: o.height, height, triangles: tris, warnings, textInfo } };
+  return { group, info: { width: o.width, depth: o.height, height, triangles: tris, warnings, textInfo, imprint } };
 }

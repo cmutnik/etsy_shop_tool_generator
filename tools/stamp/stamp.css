@@ -44,3 +44,12 @@ button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary.secondary { background: var(--panel); color: var(--accent-dark); }
 button.primary.secondary:hover { background: var(--bg); }
 .controls input[type=range] { width: 100%; }
+.muted-inline { color: var(--muted); }
+.imprint { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px 12px; margin-bottom: 14px; }
+.imprint h3 { margin: 6px 0 8px; font-size: 15px; }
+.imprint h3 small { color: var(--muted); font-weight: normal; margin-left: 6px; }
+.imprint canvas { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.legend { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.legend .sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin: 0 4px 0 10px; vertical-align: -1px; }
+.legend .sw:first-child { margin-left: 0; }
+.legend .ink { background: #1d3a5f; } .legend .thin { background: #e11d48; }

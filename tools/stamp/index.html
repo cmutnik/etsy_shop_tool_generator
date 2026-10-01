@@ -40,12 +40,24 @@
             <input type="file" id="logoFile" accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp">
           </label>
           <label class="inline" id="whiteRow"><input type="checkbox" id="ignoreWhite" checked> Ignore white fills (removes logo backgrounds)</label>
-          <div class="row" id="rasterRow">
-            <label>Threshold <input type="range" id="threshold" value="128" min="10" max="245"></label>
-            <label class="inline"><input type="checkbox" id="invert"> Invert</label>
+          <div id="rasterControls">
+            <label>Read the artwork from
+              <select id="source">
+                <option value="auto">Auto (transparency if present, else brightness)</option>
+                <option value="brightness">Brightness - dark parts are raised</option>
+                <option value="alpha">Transparency - opaque parts are raised</option>
+              </select>
+            </label>
+            <label class="inline"><input type="checkbox" id="autoThreshold" checked> Auto threshold <span id="thrValue" class="muted-inline"></span></label>
+            <label>Threshold <input type="range" id="threshold" value="128" min="5" max="250" disabled></label>
+            <div class="row">
+              <label>Smoothing <input type="range" id="smooth" value="1" min="0" max="4" step="1"></label>
+              <label>Remove specks <input type="range" id="specks" value="8" min="0" max="120" step="2"></label>
+            </div>
+            <label class="inline"><input type="checkbox" id="invert"> Invert (light art on a dark background)</label>
           </div>
           <label>Logo share of stamp (%) <input type="number" id="logoShare" value="55" min="20" max="80" step="5"></label>
-          <small id="logoNote" class="muted">SVG: only filled shapes are used (convert strokes to outlines first). Dark parts of a photo/PNG become raised; use Invert for light-on-dark art.</small>
+          <small id="logoNote" class="muted">SVG: only filled shapes are used (convert strokes to outlines first). PNG/JPG: pick the cleanest source, then adjust smoothing and specks until the imprint preview looks right. High-contrast, solid shapes work best.</small>
         </div>
       </fieldset>
 
@@ -125,6 +137,11 @@ with love</textarea>
       </div>
       <div id="viewport"></div>
       <div id="info" class="info"></div>
+      <div class="imprint">
+        <h3>Imprint preview <small>what it leaves on paper (not mirrored)</small></h3>
+        <canvas id="imprint"></canvas>
+        <div class="legend"><span class="sw ink"></span> raised <span class="sw thin"></span> thinner than 0.6 mm - may not print <span id="thinStat"></span></div>
+      </div>
       <details class="tips" open>
         <summary>Printing &amp; use tips</summary>
         <ul>
@@ -133,7 +150,8 @@ with love</textarea>
           <li><b>Bed:</b> a smooth PEI sheet gives the smoothest stamp face; a textured sheet will transfer its texture to the print.</li>
           <li><b>Mirroring:</b> the text is mirrored on the stamp face on purpose, so it stamps the right way round.</li>
           <li><b>Ink:</b> use standard water- or pigment-based stamp ink pads. Lightly press, don't rock. If the face is bumpy, sand it flat on fine (400+) paper.</li>
-          <li>Thin lines under ~0.8 mm and tiny text under ~4 mm tall may not print cleanly.</li>
+          <li><b>Thin details:</b> anything narrower than 0.6 mm is drawn in red in the imprint preview - it may not print or may snap off. Tiny text under ~4 mm tall has the same problem.</li>
+          <li><b>Logos:</b> SVG gives the cleanest result. For PNG/JPG use a high-contrast image; a transparent PNG is read by its transparency, anything else by brightness.</li>
         </ul>
       </details>
     </section>

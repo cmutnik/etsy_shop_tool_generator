@@ -12,13 +12,14 @@ shared/js/                  code used by more than one tool
   geometry2d.js             "groups" ({outer, holes}) -> THREE.Shape, outline shapes, extrude, simplify
   text-layout.js            opentype.js font + text -> groups
   svg-import.js             SVG text -> groups
-  image-trace.js            raster -> groups (threshold + marching squares)
+  image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares
+  raster-tools.js           distance transform + thin-feature detection (printability checks)
   fonts.js                  font catalogue + loading
   viewer.js                 Three.js preview (z-up, print-bed grid, orbit controls)
   export.js                 binary STL, 3MF, zip writer, download helper
 tools/
   registry.json             list of tools (live / planned / idea)
-  stamp/                    3D stamp generator (live)
+  stamp/                    3D stamp generator (live); imprint.js draws the 2D preview + flags thin details
   qr-stand/ qr-keychain/ wedding-invite-3d/   planned - README only, see docs/ROADMAP.md
 tests/                      node --test; geometry, import, export (npm test)
 docs/                       this file + roadmap

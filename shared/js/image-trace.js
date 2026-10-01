@@ -43,28 +43,95 @@ export function traceMask(mask, w, h) {
   return rings;
 }
 
-/**
- * @param {{ data: Uint8ClampedArray, width: number, height: number }} img RGBA pixels
- * @param {{ threshold?: number, invert?: boolean, tolerance?: number, minArea?: number }} opts
- *   threshold 0-255 luminance cut-off (darker = ink); transparent pixels count as white.
- */
-export function imageToGroups(img, { threshold = 128, invert = false, tolerance = 0.7, minArea = 6 } = {}) {
-  const { data, width: w, height: h } = img;
-  const mask = new Uint8Array(w * h);
-  for (let p = 0; p < w * h; p++) {
-    const a = data[p * 4 + 3] / 255;
-    const lum = 0.2126 * data[p * 4] + 0.7152 * data[p * 4 + 1] + 0.0722 * data[p * 4 + 2];
-    const v = lum * a + 255 * (1 - a);
-    mask[p] = (v < threshold) !== invert ? 1 : 0;
+/** Otsu's method on 0-255 values: the cut-off that best separates dark from light. */
+export function otsuThreshold(gray) {
+  const hist = new Float64Array(256);
+  for (let i = 0; i < gray.length; i++) hist[Math.max(0, Math.min(255, Math.round(gray[i])))]++;
+  const total = gray.length;
+  let sum = 0;
+  for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let wB = 0, sumB = 0, best = -1, thr = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) ** 2;
+    if (between > best) { best = between; thr = t + 1; } // pixels < thr count as dark
   }
+  return thr;
+}
+
+function boxBlur(src, w, h, r) {
+  if (r < 1) return src;
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h), n = 2 * r + 1;
+  for (let y = 0; y < h; y++) {
+    let acc = 0;
+    for (let x = -r; x <= r; x++) acc += src[y * w + Math.min(w - 1, Math.max(0, x))];
+    for (let x = 0; x < w; x++) {
+      tmp[y * w + x] = acc / n;
+      acc += src[y * w + Math.min(w - 1, x + r + 1)] - src[y * w + Math.max(0, x - r)];
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let acc = 0;
+    for (let y = -r; y <= r; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = acc / n;
+      acc += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+    }
+  }
+  return out;
+}
+
+/**
+ * Turn RGBA pixels into an ink mask (1 = raised).
+ * @param {{ data: Uint8ClampedArray, width: number, height: number }} img
+ * @param {object} o
+ *  source    'auto' | 'brightness' | 'alpha'. Auto uses transparency when the image has any, else brightness.
+ *            (alpha: opaque = ink - right for transparent logos whose colours are light; brightness: dark = ink.)
+ *  threshold 'auto' (Otsu) or 0-255 - pixels darker than this become ink
+ *  smooth    box-blur radius in px applied before thresholding (softens jagged/noisy edges)
+ *  invert    swap ink and paper
+ * @returns {{ mask: Uint8Array, width, height, threshold: number, source: string }}
+ */
+export function buildMask(img, { source = 'auto', threshold = 'auto', smooth = 0, invert = false } = {}) {
+  const { data, width: w, height: h } = img;
+  const n = w * h;
+  let transparent = 0;
+  for (let p = 0; p < n; p++) if (data[p * 4 + 3] < 128) transparent++;
+  const src = source === 'auto' ? (transparent / n > 0.01 ? 'alpha' : 'brightness') : source;
+  let gray = new Float32Array(n);
+  for (let p = 0; p < n; p++) {
+    const a = data[p * 4 + 3] / 255;
+    if (src === 'alpha') gray[p] = 255 * (1 - a);
+    else gray[p] = (0.2126 * data[p * 4] + 0.7152 * data[p * 4 + 1] + 0.0722 * data[p * 4 + 2]) * a + 255 * (1 - a);
+  }
+  gray = boxBlur(gray, w, h, Math.round(smooth));
+  const thr = threshold === 'auto' ? (src === 'alpha' ? 128 : otsuThreshold(gray)) : threshold;
+  const mask = new Uint8Array(n);
+  for (let p = 0; p < n; p++) mask[p] = (gray[p] < thr) !== invert ? 1 : 0;
+  return { mask, width: w, height: h, threshold: thr, source: src };
+}
+
+/**
+ * Raster -> groups (y-up, centred, units = source pixels). Options as buildMask plus
+ *  tolerance  outline simplification in px (higher = smoother, fewer points)
+ *  minArea    drop specks smaller than this many px^2
+ * Returns { groups, width, height, threshold, source }.
+ */
+export function imageToGroups(img, { tolerance = 0.7, minArea = 6, ...maskOpts } = {}) {
+  const { mask, width: w, height: h, threshold, source } = buildMask(img, maskOpts);
   const rings = traceMask(mask, w, h)
     .filter(r => Math.abs(signedArea(r)) >= minArea)
     .map(r => simplifyRing(r, tolerance).map(([x, y]) => [x, -y])); // flip to y-up
-  return centerGroups(contoursToGroups(rings));
+  return { ...centerGroups(contoursToGroups(rings)), threshold, source };
 }
 
 /** Browser only: decode an image File to RGBA pixels, downscaled so the long side <= maxSize. */
-export async function readImageFile(file, maxSize = 512) {
+export async function readImageFile(file, maxSize = 640) {
   const bmp = await createImageBitmap(file);
   const s = Math.min(1, maxSize / Math.max(bmp.width, bmp.height));
   const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));

@@ -5,6 +5,7 @@ import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
 import { svgToGroups } from '../../shared/js/svg-import.js';
 import { imageToGroups, readImageFile } from '../../shared/js/image-trace.js';
 import { buildStamp } from './geometry.js';
+import { renderImprint, MIN_FEATURE_MM } from './imprint.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
@@ -48,8 +49,18 @@ function updateLogo() {
   try {
     logo = logoSource.kind === 'svg'
       ? svgToGroups(logoSource.text, { ignoreWhite: $('ignoreWhite').checked })
-      : imageToGroups(logoSource.image, { threshold: num('threshold'), invert: $('invert').checked });
-    if (!logo.groups.length) statusEl.textContent = 'No shapes found in that logo - try another threshold or Invert.';
+      : imageToGroups(logoSource.image, {
+        source: $('source').value,
+        threshold: $('autoThreshold').checked ? 'auto' : num('threshold'),
+        smooth: num('smooth'),
+        minArea: num('specks'),
+        invert: $('invert').checked,
+      });
+    if (logoSource.kind === 'raster') {
+      $('thrValue').textContent = `(${logo.source}, cut-off ${Math.round(logo.threshold)})`;
+      if ($('autoThreshold').checked) $('threshold').value = Math.round(logo.threshold);
+    }
+    if (!logo.groups.length) statusEl.textContent = 'No shapes found in that logo - try another source, threshold or Invert.';
     else statusEl.textContent = '';
   } catch (err) {
     logo = null;
@@ -124,7 +135,8 @@ function doBuild() {
   $('logoShare').parentElement.style.display = p.artMode === 'logo' || p.artMode === 'text' ? 'none' : '';
   const isSvg = logoSource && logoSource.kind === 'svg';
   $('whiteRow').style.display = !logoSource || isSvg ? '' : 'none';
-  $('rasterRow').style.display = !logoSource || !isSvg ? '' : 'none';
+  $('rasterControls').style.display = logoSource && !isSvg ? '' : 'none';
+  $('threshold').disabled = $('autoThreshold').checked;
   $('fontSizeRow').style.display = p.autoFit ? 'none' : '';
   $('cornerRadius').disabled = p.shape !== 'rect';
   $('borderWidth').disabled = !p.border;
@@ -139,13 +151,18 @@ function doBuild() {
   const i = res.info;
   $('info').textContent = `${i.width} x ${i.depth} x ${i.height.toFixed(1)} mm  |  ${Math.round(i.triangles).toLocaleString()} triangles` +
     (i.textInfo ? `  |  text height ~${i.textInfo.fontSizeMm.toFixed(1)} mm` : '');
-  $('warnings').replaceChildren(...i.warnings.map(t => Object.assign(document.createElement('div'), { textContent: t })));
+  const thin = renderImprint($('imprint'), i, p);
+  const warnings = [...i.warnings];
+  $('thinStat').textContent = thin.thinMm2 > 0 ? `(${(thin.thinFraction * 100).toFixed(1)}% of the artwork)` : '';
+  if (thin.thinFraction > 0.03) warnings.push(`${(thin.thinFraction * 100).toFixed(0)}% of the artwork is thinner than ${MIN_FEATURE_MM} mm (red in the imprint preview) and may print poorly or break off. Enlarge the stamp, use a bolder font, or simplify the logo (more smoothing, higher speck removal).`);
+  $('warnings').replaceChildren(...warnings.map(t => Object.assign(document.createElement('div'), { textContent: t })));
   const empty = !stamp.children.some(c => c.name === 'relief');
   $('download').disabled = $('download3mf').disabled = empty;
 }
 
-$('controls').addEventListener('input', e => rebuild(e.target.id === 'threshold' || e.target.id === 'invert' || e.target.id === 'ignoreWhite'));
-$('controls').addEventListener('change', e => rebuild(e.target.id === 'threshold' || e.target.id === 'invert' || e.target.id === 'ignoreWhite'));
+const LOGO_OPTS = ['threshold', 'autoThreshold', 'invert', 'source', 'smooth', 'specks', 'ignoreWhite'];
+$('controls').addEventListener('input', e => rebuild(LOGO_OPTS.includes(e.target.id)));
+$('controls').addEventListener('change', e => rebuild(LOGO_OPTS.includes(e.target.id)));
 
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
   view = b.dataset.view;
