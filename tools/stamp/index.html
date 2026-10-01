@@ -1,0 +1,143 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>3D Stamp Generator - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="stamp.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+      "opentype.js": "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a href="../../"><h1>Etsy Shop Tools</h1></a>
+    <span>3D Stamp Generator</span>
+  </header>
+  <main class="stamp-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Artwork</legend>
+        <label>Layout
+          <select id="artMode">
+            <option value="text">Text only</option>
+            <option value="logo">Logo only</option>
+            <option value="logo-above">Logo above text</option>
+            <option value="logo-left">Logo left of text</option>
+          </select>
+        </label>
+        <div id="logoControls">
+          <label>Logo file <small>(SVG, PNG, JPG)</small>
+            <input type="file" id="logoFile" accept=".svg,image/svg+xml,image/png,image/jpeg,image/webp">
+          </label>
+          <label class="inline" id="whiteRow"><input type="checkbox" id="ignoreWhite" checked> Ignore white fills (removes logo backgrounds)</label>
+          <div class="row" id="rasterRow">
+            <label>Threshold <input type="range" id="threshold" value="128" min="10" max="245"></label>
+            <label class="inline"><input type="checkbox" id="invert"> Invert</label>
+          </div>
+          <label>Logo share of stamp (%) <input type="number" id="logoShare" value="55" min="20" max="80" step="5"></label>
+          <small id="logoNote" class="muted">SVG: only filled shapes are used (convert strokes to outlines first). Dark parts of a photo/PNG become raised; use Invert for light-on-dark art.</small>
+        </div>
+      </fieldset>
+
+      <fieldset id="textFieldset">
+        <legend>Text</legend>
+        <label>Text (one line per row)
+          <textarea id="text" rows="3">Handmade
+with love</textarea>
+        </label>
+        <label>Font
+          <select id="font"></select>
+        </label>
+        <label>Or upload a font <small>(.ttf .otf .woff)</small>
+          <input type="file" id="fontFile" accept=".ttf,.otf,.woff">
+        </label>
+        <label class="inline"><input type="checkbox" id="autoFit" checked> Auto-fit text to stamp</label>
+        <div class="row" id="fontSizeRow">
+          <label>Font size (mm) <input type="number" id="fontSize" value="8" min="2" max="80" step="0.5"></label>
+        </div>
+        <div class="row">
+          <label>Line spacing <input type="number" id="lineSpacing" value="1.25" min="0.8" max="3" step="0.05"></label>
+          <label>Text padding (mm) <input type="number" id="textPadding" value="1" min="0" max="20" step="0.5"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Stamp shape</legend>
+        <div class="row">
+          <label>Shape
+            <select id="shape">
+              <option value="rect">Rectangle</option>
+              <option value="ellipse">Circle / oval</option>
+            </select>
+          </label>
+          <label>Corner radius (mm) <input type="number" id="cornerRadius" value="3" min="0" max="50" step="0.5"></label>
+        </div>
+        <div class="row">
+          <label>Width (mm) <input type="number" id="width" value="50" min="10" max="200" step="1"></label>
+          <label>Height (mm) <input type="number" id="height" value="30" min="10" max="200" step="1"></label>
+        </div>
+        <label class="inline"><input type="checkbox" id="border" checked> Raised border</label>
+        <div class="row">
+          <label>Border width (mm) <input type="number" id="borderWidth" value="1.2" min="0.4" max="10" step="0.1"></label>
+          <label>Edge margin (mm) <input type="number" id="margin" value="1.5" min="0" max="10" step="0.5"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Depth &amp; handle</legend>
+        <div class="row">
+          <label>Relief height (mm) <input type="number" id="relief" value="1.5" min="0.6" max="5" step="0.1"></label>
+          <label>Base thickness (mm) <input type="number" id="baseThickness" value="3" min="1" max="10" step="0.2"></label>
+        </div>
+        <div class="row">
+          <label>Handle
+            <select id="handle">
+              <option value="knob">Round knob</option>
+              <option value="bar">Grip bar</option>
+              <option value="none">None (flat block)</option>
+            </select>
+          </label>
+          <label>Handle size (mm) <input type="number" id="handleSize" value="18" min="6" max="100" step="1"></label>
+          <label>Handle height (mm) <input type="number" id="handleHeight" value="12" min="3" max="40" step="1"></label>
+        </div>
+        <label class="inline"><input type="checkbox" id="marker" checked> "Up" arrow on top edge of base</label>
+      </fieldset>
+
+      <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF</button></div>
+      <div id="warnings"></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar">
+        <button data-view="print" class="active">Print orientation</button>
+        <button data-view="face">Stamp face (mirrored)</button>
+        <span id="status" class="status">Loading font...</span>
+      </div>
+      <div id="viewport"></div>
+      <div id="info" class="info"></div>
+      <details class="tips" open>
+        <summary>Printing &amp; use tips</summary>
+        <ul>
+          <li><b>Orientation:</b> the model is already oriented stamp-face-down. Print as-is, with <b>no supports</b>. The face is the first layer, so it comes out flat.</li>
+          <li><b>Settings:</b> 0.4 mm nozzle, 0.12-0.16 mm layers, 3+ walls, 20%+ infill. PLA or PETG both work. Leave ironing off.</li>
+          <li><b>Bed:</b> a smooth PEI sheet gives the smoothest stamp face; a textured sheet will transfer its texture to the print.</li>
+          <li><b>Mirroring:</b> the text is mirrored on the stamp face on purpose, so it stamps the right way round.</li>
+          <li><b>Ink:</b> use standard water- or pigment-based stamp ink pads. Lightly press, don't rock. If the face is bumpy, sand it flat on fine (400+) paper.</li>
+          <li>Thin lines under ~0.8 mm and tiny text under ~4 mm tall may not print cleanly.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="stamp.js"></script>
+</body>
+</html>

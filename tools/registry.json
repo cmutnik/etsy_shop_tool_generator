@@ -1,0 +1,7 @@
+[
+  { "id": "stamp", "title": "3D Stamp Generator", "description": "Text, logo and border stamps as FDM-ready STL / 3MF.", "path": "stamp/", "status": "live" },
+  { "id": "qr-stand", "title": "QR Code Stand", "description": "Embossed QR plate plus a slotted base, with optional icon and title banner.", "status": "planned" },
+  { "id": "qr-keychain", "title": "QR Code Keychain", "description": "QR plate with a split-ring loop, printed as one piece.", "status": "planned" },
+  { "id": "wedding-invite-3d", "title": "3D Wedding Invite", "description": "Turn an invitation photo or SVG into a layered 3D print.", "status": "planned" },
+  { "id": "mesh-modifier", "title": "STL / 3MF Modifier", "description": "Scale, split, add text or hanging holes to an existing model.", "status": "idea" }
+]

@@ -1,0 +1,33 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Etsy Shop Tools</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="site"><h1>Etsy Shop Tools</h1><span style="color:var(--muted)">Free, in-browser helpers for makers. Nothing is uploaded.</span></header>
+  <main>
+    <div class="cards" id="cards"></div>
+  </main>
+  <script>
+    // Cards are generated from tools/registry.json - add a tool there, not here.
+    fetch('tools/registry.json').then(r => r.json()).then(tools => {
+      const cards = document.getElementById('cards');
+      for (const t of tools) {
+        const live = t.status === 'live';
+        const el = document.createElement(live ? 'a' : 'div');
+        el.className = 'card' + (live ? '' : ' soon');
+        if (live) el.href = 'tools/' + t.path;
+        const h = document.createElement('h2'); h.textContent = t.title;
+        const p = document.createElement('p'); p.textContent = live ? t.description : t.description + ' (' + (t.status === 'planned' ? 'coming soon' : 'idea') + ')';
+        el.append(h, p);
+        cards.append(el);
+      }
+    });
+  </script>
+</body>
+</html>

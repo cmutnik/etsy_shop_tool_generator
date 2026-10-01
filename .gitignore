@@ -1,3 +1,7 @@
+# Local additions
+.DS_Store
+invite2svg/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -216,3 +220,39 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Etsy Shop Tools (static site + Node tests)
+# ---------------------------------------------------------------------------
+
+# Node: package.json exists only to run `npm test`. Commit package-lock.json, not installed packages.
+# (node_modules/.font-cache, used by the tests, lives inside this.)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.eslintcache
+
+# Browser automation / screenshot output
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Local scratch: generated models and screenshots from trying tools out.
+# Commit deliberate test fixtures under tests/fixtures/ instead.
+/exports/
+/output/
+/out/
+/tmp/
+
+# Editors / OS
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Claude Code: per-user local state (shared .claude/settings.json is fine to commit)
+.claude/settings.local.json
+.claude/worktrees/
