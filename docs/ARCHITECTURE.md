@@ -2,25 +2,28 @@
 # Architecture
 
 A **static site**: plain HTML + ES modules, no build step, hostable on GitHub Pages. Third-party libraries load from
-jsDelivr through an import map in each page (`three`, `three/addons/`, `opentype.js`). Everything runs in the
+jsDelivr through an import map in each page (`three`, `three/addons/`, `opentype.js`, `qrcode-generator`, `jsqr` - each page lists only what it uses). Everything runs in the
 browser - nothing is uploaded.
 
 ```
 index.html                  hub page; renders cards from tools/registry.json
-assets/style.css            shared look & feel (light/dark)
+assets/style.css            site-wide look & feel (light/dark)
+assets/tool.css             layout + controls shared by tool pages
 shared/js/                  code used by more than one tool
   geometry2d.js             "groups" ({outer, holes}) -> THREE.Shape, outline shapes, extrude, simplify
   text-layout.js            opentype.js font + text -> groups
   svg-import.js             SVG text -> groups
   image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares
   raster-tools.js           distance transform + thin-feature detection (printability checks)
+  qr-plate.js               QR matrix -> plate of boxes (raised/engraved), top-down raster for scan checks
   fonts.js                  font catalogue + loading
   viewer.js                 Three.js preview (z-up, print-bed grid, orbit controls)
   export.js                 binary STL, 3MF, zip writer, download helper
 tools/
   registry.json             list of tools (live / planned / idea)
   stamp/                    3D stamp generator (live); imprint.js draws the 2D preview + flags thin details
-  qr-stand/ qr-keychain/ wedding-invite-3d/   planned - README only, see docs/ROADMAP.md
+  qr-keychain/              QR keychain (live)
+  qr-stand/ wedding-invite-3d/   planned - README only, see docs/ROADMAP.md
 tests/                      node --test; geometry, import, export (npm test)
 docs/                       this file + roadmap
 invite2svg/                 legacy Python/Streamlit app, being ported (see roadmap); untouched

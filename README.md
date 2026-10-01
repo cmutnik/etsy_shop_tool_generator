@@ -9,12 +9,18 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | Tool | Status | What it does |
 |---|---|---|
 | [3D Stamp Generator](tools/stamp/) | live | Text, logo and border stamps as FDM-ready STL / 3MF |
-| [QR Code Keychain](tools/qr-keychain/) | planned | QR plate with a split-ring loop, one printable piece |
+| [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | planned | Embossed QR plate plus a slotted base, optional icon/title banner |
 | [3D Wedding Invite](tools/wedding-invite-3d/) | planned | Invitation photo or SVG to a layered 3D print |
 | STL / 3MF modifier | idea | Scale, split, add text or hanging holes to an existing model |
 
 The list shown on the home page comes from [tools/registry.json](tools/registry.json).
+
+### QR Code Keychain
+
+- Link or text to QR (error correction L/M/Q/H, module size, quiet zone), raised or engraved, with a split-ring loop above or below.
+- **Scan check:** the model's own geometry is decoded in the page, so you know the code is readable before printing.
+- Two-colour output: the page shows the height for a single filament change; the 3MF carries plate and QR colours.
 
 ### 3D Stamp Generator
 
@@ -53,7 +59,7 @@ Enable GitHub Pages on the repo root: Settings > Pages > Deploy from branch `mai
 |---|---|
 | `index.html`, `assets/` | Home page and shared styles |
 | `tools/<name>/` | One folder per tool (`index.html`, UI wiring, and a DOM-free `geometry.js`) |
-| `shared/js/` | Code shared by tools: 2D geometry, text layout, SVG and image import, raster checks, 3D viewer, STL/3MF export |
+| `shared/js/` | Code shared by tools: 2D geometry, text layout, SVG and image import, raster checks, QR plates, 3D viewer, STL/3MF export |
 | `tests/` | `node --test` suites |
 | `docs/` | [Architecture](docs/ARCHITECTURE.md) and [roadmap](docs/ROADMAP.md) |
 | `invite2svg/` | Existing Python/Streamlit app (QR stand, keychain, wedding invite). Being ported to JavaScript here, then removed. See the [port plan](docs/ROADMAP.md#porting-the-qr-tools-from-invite2svg) |

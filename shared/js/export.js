@@ -11,7 +11,7 @@ export function exportSTL(object) {
 /** Collect every mesh under `object` into one indexed triangle list (vertices welded at 1e-4 mm). */
 export function collectMesh(object) {
   object.updateMatrixWorld(true);
-  const verts = [], tris = [], index = new Map();
+  const verts = [], tris = [], triMat = [], palette = [], index = new Map();
   const v = { x: 0, y: 0, z: 0 };
   object.traverse(m => {
     if (!m.isMesh) return;
@@ -28,29 +28,42 @@ export function collectMesh(object) {
       if (id === undefined) { id = verts.length / 3; verts.push(+v.x.toFixed(4), +v.y.toFixed(4), +v.z.toFixed(4)); index.set(key, id); }
       ids[i] = id;
     }
+    const hex = m.material && m.material.color ? '#' + m.material.color.getHexString().toUpperCase() : null;
+    let mi = palette.indexOf(hex);
+    if (mi < 0) { palette.push(hex); mi = palette.length - 1; }
     const idx = m.geometry.index;
     const n = idx ? idx.count : pos.count;
     for (let i = 0; i < n; i += 3) {
       const a = ids[idx ? idx.getX(i) : i], b = ids[idx ? idx.getX(i + 1) : i + 1], c = ids[idx ? idx.getX(i + 2) : i + 2];
-      if (a !== b && b !== c && a !== c) tris.push(a, b, c); // drop degenerate triangles
+      if (a !== b && b !== c && a !== c) { tris.push(a, b, c); triMat.push(mi); } // drop degenerate triangles
     }
   });
-  return { verts, tris };
+  return { verts, tris, triMat, palette };
 }
 
-export function export3MF(object, { title = 'model' } = {}) {
-  const { verts, tris } = collectMesh(object);
+/**
+ * @param {{ title?: string, colors?: boolean }} opts  colors: tag each triangle with its mesh material's colour
+ *  (3MF core "basematerials"). Slicers that read it show the parts in colour; others ignore it.
+ */
+export function export3MF(object, { title = 'model', colors = false } = {}) {
+  const { verts, tris, triMat, palette } = collectMesh(object);
+  const useColors = colors && palette.every(Boolean);
   const parts = [];
   for (let i = 0; i < verts.length; i += 3) parts.push(`<vertex x="${verts[i]}" y="${verts[i + 1]}" z="${verts[i + 2]}"/>`);
   const vertexXml = parts.join('');
   const triParts = [];
-  for (let i = 0; i < tris.length; i += 3) triParts.push(`<triangle v1="${tris[i]}" v2="${tris[i + 1]}" v3="${tris[i + 2]}"/>`);
+  for (let i = 0; i < tris.length; i += 3) {
+    triParts.push(`<triangle v1="${tris[i]}" v2="${tris[i + 1]}" v3="${tris[i + 2]}"${useColors ? ` pid="2" p1="${triMat[i / 3]}"` : ''}/>`);
+  }
+  const materialsXml = useColors
+    ? `<basematerials id="2">${palette.map((c, i) => `<base name="Color ${i + 1}" displaycolor="${c}FF"/>`).join('')}</basematerials>`
+    : '';
   const esc = s => s.replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
   const model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
 <metadata name="Title">${esc(title)}</metadata>
 <metadata name="Application">Etsy Shop Tools</metadata>
-<resources><object id="1" name="${esc(title)}" type="model"><mesh><vertices>${vertexXml}</vertices><triangles>${triParts.join('')}</triangles></mesh></object></resources>
+<resources>${materialsXml}<object id="1" name="${esc(title)}" type="model"${useColors ? ' pid="2" pindex="0"' : ''}><mesh><vertices>${vertexXml}</vertices><triangles>${triParts.join('')}</triangles></mesh></object></resources>
 <build><item objectid="1"/></build>
 </model>`;
   const files = [

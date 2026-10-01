@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import { buildStamp, splitRegions } from '../tools/stamp/geometry.js';
 import { export3MF, exportSTL, collectMesh, crc32 } from '../shared/js/export.js';
 import { imageToGroups } from '../shared/js/image-trace.js';
-import { testFont, baseStamp } from './helpers.mjs';
+import { testFont, baseStamp, assertWatertight } from './helpers.mjs';
 
 const font = await testFont();
 const skip = font ? false : 'font not available offline';
@@ -23,18 +23,7 @@ function logoFixture() {
   return imageToGroups({ data, width: w, height: h });
 }
 
-/** Every undirected edge must be shared by exactly two triangles (closed, no cracks). */
-function assertWatertight(mesh) {
-  const pos = mesh.geometry.attributes.position, ids = new Map(), edges = new Map();
-  const id = i => { const k = [pos.getX(i), pos.getY(i), pos.getZ(i)].map(v => v.toFixed(4)).join(); if (!ids.has(k)) ids.set(k, ids.size); return ids.get(k); };
-  for (let t = 0; t < pos.count; t += 3) {
-    const v = [id(t), id(t + 1), id(t + 2)];
-    if (new Set(v).size < 3) continue;
-    for (let e = 0; e < 3; e++) { const a = v[e], b = v[(e + 1) % 3], k = a < b ? a + '_' + b : b + '_' + a; edges.set(k, (edges.get(k) || 0) + 1); }
-  }
-  const bad = [...edges.values()].filter(n => n !== 2).length;
-  assert.equal(bad, 0, `${mesh.name}: ${bad} non-manifold edges of ${edges.size}`);
-}
+const assertWatertightMesh = m => assertWatertight(m, assert);
 
 test('stamp: text stamp sits on the bed and parts are watertight', { skip }, () => {
   const { group, info } = buildStamp({ ...baseStamp, font });
@@ -46,7 +35,7 @@ test('stamp: text stamp sits on the bed and parts are watertight', { skip }, () 
   group.children.filter(c => c.name === 'relief').forEach(c => relief.expandByObject(c));
   assert.equal(relief.min.z, 0);
   assert.ok(relief.max.x <= 25 - 1.5 + 1e-6 && relief.max.y <= 15 - 1.5 + 1e-6, 'relief stays inside the margin');
-  group.children.forEach(assertWatertight);
+  group.children.forEach(assertWatertightMesh);
 });
 
 test('stamp: every layout and shape builds', { skip }, () => {
@@ -57,7 +46,7 @@ test('stamp: every layout and shape builds', { skip }, () => {
         const { group, info } = buildStamp({ ...baseStamp, font, logo, artMode, shape, handle, cornerRadius: shape === 'rect' ? 3 : 0 });
         assert.ok(group.children.some(c => c.name === 'relief'), `${artMode}/${shape}/${handle}`);
         assert.deepEqual(info.warnings.filter(w => !/^Effective font size/.test(w)), [], `${artMode}/${shape}/${handle}`); // small-text warning is legitimate in tight layouts
-        group.children.forEach(assertWatertight);
+        group.children.forEach(assertWatertightMesh);
       }
 });
 

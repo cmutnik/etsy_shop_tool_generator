@@ -1,11 +1,15 @@
 <!-- Copyright (c) 2025 cmutnik -->
-# QR Code Keychain (planned)
+# QR Code Keychain
 
-Port of `invite2svg/pages/3_🔑_QR_Code_Keychain.py`. Same QR plate as the stand (`build_qr_plate_mesh`), plus a
-loop with a through-hole fused on as **one** printable piece (`build_keychain_loop_mesh`).
+Live. Port of `invite2svg/pages/3_*QR_Code_Keychain.py` (+ `build_qr_plate_mesh`, `build_keychain_loop_mesh`).
 
-Parameters: error correction, module size, margin, plate thickness, emboss depth, loop outer diameter,
-hole diameter, neck width, neck height.
+- `geometry.js` - `buildKeychain(params)` -> `THREE.Group` + info. DOM-free, tested in `tests/qr-keychain.test.mjs`.
+- `keychain.js` / `index.html` - the page. Includes an in-page **scan check**: the generated geometry is rasterised top-down and decoded with jsQR.
+- QR encoding and plate boxes live in `shared/js/qr-plate.js` so the QR stand can reuse them.
 
-Shares its QR plate builder with `tools/qr-stand/` - build that once in `shared/js/qr-plate.js`.
-See [docs/ROADMAP.md](../../docs/ROADMAP.md#porting-the-qr-tools-from-invite2svg).
+Design notes
+- The plate is built from overlapping axis-aligned boxes (dark modules merged along rows, then stacked), not merged polygons - the same idea as the Python version, which avoided a triangulator crash on dense QR regions.
+- Colours follow layers: **raised** = one filament change at the plate top; **engraved** = dark below, light on the top `depth` mm. The colour 3MF tags triangles with `basematerials` colours; slicers that ignore them still print fine.
+- Text is encoded as UTF-8 (the encoder library's default would corrupt non-ASCII).
+
+Differences from the Python page: no Plotly preview (Three.js instead), a live scan check, and the filament-change height is shown.

@@ -26,3 +26,18 @@ export const baseStamp = {
   shape: 'rect', width: 50, height: 30, cornerRadius: 3, border: true, borderWidth: 1.2, margin: 1.5,
   relief: 1.5, baseThickness: 3, handle: 'knob', handleSize: 18, handleHeight: 12, marker: true,
 };
+
+/** Every undirected edge must be shared by exactly two triangles (closed, no cracks). Handles indexed geometry. */
+export function assertWatertight(mesh, assert) {
+  const pos = mesh.geometry.attributes.position, idx = mesh.geometry.index, ids = new Map(), edges = new Map();
+  const id = i => { const k = [pos.getX(i), pos.getY(i), pos.getZ(i)].map(v => v.toFixed(4)).join(); if (!ids.has(k)) ids.set(k, ids.size); return ids.get(k); };
+  const count = idx ? idx.count : pos.count;
+  const at = i => (idx ? idx.getX(i) : i);
+  for (let t = 0; t < count; t += 3) {
+    const v = [id(at(t)), id(at(t + 1)), id(at(t + 2))];
+    if (new Set(v).size < 3) continue;
+    for (let e = 0; e < 3; e++) { const a = v[e], b = v[(e + 1) % 3], k = a < b ? a + '_' + b : b + '_' + a; edges.set(k, (edges.get(k) || 0) + 1); }
+  }
+  const bad = [...edges.values()].filter(n => n !== 2).length;
+  assert.equal(bad, 0, `${mesh.name}: ${bad} non-manifold edges of ${edges.size}`);
+}
