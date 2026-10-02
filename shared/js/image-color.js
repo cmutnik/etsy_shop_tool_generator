@@ -120,9 +120,19 @@ export function removeBackground(img, { color = 'auto', tolerance = 25, contiguo
     }
     for (let p = 0; p < n; p++) if (data[p * 4 + 3] < 128) removedMask[p] = 1;   // already transparent
   }
-  let subject = new Uint8Array(n);
+  const subject = new Uint8Array(n);
   for (let p = 0; p < n; p++) subject[p] = removedMask[p] ? 0 : 1;
-  subject = despeckle(subject, w, h, { minInk: minSubject });
+  return { ...cutOut(img, subject, { feather, shrink, minSubject }), background: bg };
+}
+
+/**
+ * Turn a subject mask (1 = keep) into a cut-out picture: drop floating specks, optionally shrink the edge, soften it inwards only
+ * (no halo of old background), and make everything else transparent. Used by removeBackground and by mark-based segmentation.
+ * @returns {{ rgba: Uint8ClampedArray, alpha: Uint8Array, subject: Uint8Array, removed: number }}
+ */
+export function cutOut(img, subjectMask, { feather = 1, shrink = 0, minSubject = 0 } = {}) {
+  const { data, width: w, height: h } = img, n = w * h;
+  let subject = despeckle(subjectMask, w, h, { minInk: minSubject });
   if (shrink > 0) subject = erodeMask(subject, w, h, shrink);
   // soft edge, inwards only: partially transparent just inside the cut, nothing outside it
   let soft = null;
@@ -134,7 +144,7 @@ export function removeBackground(img, { color = 'auto', tolerance = 25, contiguo
     if (!subject[p]) removed++;
     rgba[p * 4 + 3] = Math.round((alpha[p] * data[p * 4 + 3]) / 255);
   }
-  return { rgba, alpha, subject, background: bg, removed: removed / n };
+  return { rgba, alpha, subject, removed: removed / n };
 }
 
 // ---------- posterize ----------

@@ -136,14 +136,16 @@ test('maskToSvg: a block with a hole becomes one even-odd path whose area matche
   assert.match(maskToSvg(m, w, h, { color: '#ff0000', background: '#ffffff', scale: 2 }).svg, /fill="#ff0000"[\s\S]*width="120"|rect width="60" height="40" fill="#ffffff"/);
 });
 
-test('maskToSvg: smooth curves keep the area and add Q segments; specks are dropped', () => {
+test('maskToSvg: smooth curves keep the area and use Bezier (C) segments; specks are dropped', () => {
   const { m, w, h } = ringMask();
   m[1 * w + 1] = 1;
   const sharp = maskToSvg(m, w, h, { minArea: 6 }), smooth = maskToSvg(m, w, h, { minArea: 6, smooth: true });
   assert.equal(sharp.shapes, 2, 'speck dropped');
-  assert.ok(!pathD(sharp.svg).includes('Q') && pathD(smooth.svg).includes('Q'));
-  const net = s => { const a = pathArea(pathD(s)); return Math.abs(a[0]) - Math.abs(a[1]); };
-  assert.ok(Math.abs(net(smooth.svg) - net(sharp.svg)) / net(sharp.svg) < 0.02, 'smoothing barely changes the area');
+  assert.ok(!pathD(sharp.svg).includes('C') && pathD(smooth.svg).includes('C'));
+  // area measured by really flattening the curves (the SVG importer does that)
+  const area = svg => svgToGroups(svg, { ignoreWhite: false }).groups.reduce((s, g) => s + Math.abs(signedArea(g.outer)) - g.holes.reduce((a, hh) => a + Math.abs(signedArea(hh)), 0), 0);
+  assert.ok(Math.abs(area(smooth.svg) - area(sharp.svg)) / area(sharp.svg) < 0.02, `${area(smooth.svg)} vs ${area(sharp.svg)}`);
+  assert.ok(Math.abs(area(smooth.svg) - sum(m) + 1) / sum(m) < 0.04, 'and both stay close to the pixel count');
 });
 
 test('the SVG imports into the stamp tool: holes survive and the size matches', () => {

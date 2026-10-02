@@ -1,6 +1,9 @@
 # Local additions
 .DS_Store
 assets/logo-layerverse.jpg
+assets/layerverse-stamp.svg
+assets/logo-linegraphic.png
+assets/logo-thick-lines.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

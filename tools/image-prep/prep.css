@@ -4,14 +4,23 @@
 .seg button:first-child { border-radius: 6px 0 0 6px; }
 .seg button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
 .seg button.active { background: var(--accent); color: #fff; border-color: var(--accent-dark); position: relative; }
-.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0 0 12px; }
+.compare { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin: 0 0 12px; }
 @media (max-width: 700px) { .compare { grid-template-columns: 1fr; } }
-.compare figure { margin: 0; }
+.compare figure { margin: 0; min-width: 0; }
 .compare figcaption { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
 .frame { position: relative; min-height: 220px; border: 1px solid var(--line); border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .frame.checker { background: repeating-conic-gradient(#ddd 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
-.frame canvas, .frame img { display: block; max-width: 100%; max-height: 520px; width: auto; height: auto; }
-.placeholder { position: absolute; margin: 0; color: var(--muted); text-align: center; padding: 0 12px; }
+.frame { max-height: 522px; overflow: auto; align-items: flex-start; justify-content: flex-start; }   /* the stack centres itself with margin:auto, which still lets it scroll when it is bigger than the frame */
+.stack { position: relative; margin: auto; flex: none; line-height: 0; }
+.stack > canvas, .stack > img { display: block; width: 100%; height: 100%; }
+.stack > canvas#marks, .stack > canvas#thin { position: absolute; left: 0; top: 0; pointer-events: none; }
+.stack > canvas#marks.painting { pointer-events: auto; cursor: crosshair; touch-action: none; }   /* touch-action: a finger paints a mark instead of scrolling the page */
+.zoomlabel { font-size: 13px; color: var(--muted); }
+.brushes { margin-bottom: 8px; }
+.brushes button[data-brush="subject"].active { background: #0a8a4a; border-color: #076b38; }
+.brushes button[data-brush="background"].active { background: #d12; border-color: #a00; }
+.brushes button[data-brush="erase"].active { background: var(--muted); border-color: var(--muted); }
+.placeholder { position: absolute; margin: 0; color: var(--muted); text-align: center; padding: 8px 12px; background: var(--panel); border-radius: 8px; max-width: 90%; }
 #drop.over .frame { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .seg4 { flex-wrap: wrap; }
 .seg4 button { flex: 1 1 45%; margin-left: 0 !important; border-radius: 0 !important; margin-top: -1px; }

@@ -1,6 +1,9 @@
 // Copyright (c) 2025 cmutnik
 // Small raster helpers for checking printability of flat artwork.
 
+/** Raised or black features narrower than this (mm) are flagged: a 0.4 mm nozzle prints them unreliably. Shared by the stamp and Image Prep. */
+export const MIN_FEATURE_MM = 0.6;
+
 /** Exact squared Euclidean distance (Felzenszwalb) from every pixel to the nearest pixel where `isSource(i)`. */
 export function distanceSquared(w, h, isSource) {
   const INF = 1e20, d = new Float64Array(w * h);

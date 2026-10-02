@@ -58,3 +58,20 @@ test('imageToGroups frame: two layers cut from one picture keep their relative p
   assert.ok(ax < 0 && ay < 0);
   assert.equal(imageToGroups(pic(5, 25)).framed, false);
 });
+
+import { explainImageError } from '../shared/js/image-trace.js';
+
+test('explainImageError gives a specific way out for the formats browsers cannot open', () => {
+  const f = (name, type = '', size = 100) => ({ name, type, size });
+  assert.match(explainImageError(f('IMG_0001.HEIC', 'image/heic')), /iPhone.*JPG or PNG/s);
+  assert.match(explainImageError(f('photo.heif')), /HEIC/);
+  assert.match(explainImageError(f('scan.tif')), /TIFF/);
+  assert.match(explainImageError(f('scan.TIFF', 'image/tiff')), /Convert it to a PNG or JPG/);
+  assert.match(explainImageError(f('design.psd')), /\.psd files cannot be read/);
+  assert.match(explainImageError(f('logo.ai')), /Export the picture/);
+  assert.match(explainImageError(f('shot.cr2')), /RAW/);
+  assert.match(explainImageError(f('logo.svg', 'image/svg+xml')), /SVG could not be drawn/);
+  assert.match(explainImageError(f('empty.png', 'image/png', 0)), /empty/);
+  assert.match(explainImageError(f('notes.txt', 'text/plain')), /PNG, JPG, WebP or SVG/);
+  assert.match(explainImageError(undefined), /PNG, JPG, WebP or SVG/);
+});

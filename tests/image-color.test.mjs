@@ -252,3 +252,24 @@ test('gradient does nothing without contiguous, and defaults to off', () => {
   assert.deepEqual([...a.alpha], [...b.alpha]);
   assert.deepEqual([...removeBackground(img, { feather: 0 }).alpha], [...removeBackground(img, { feather: 0, gradient: false }).alpha]);
 });
+
+import { cutOut } from '../shared/js/image-color.js';
+
+test('cutOut: any subject mask becomes a transparent-background picture (specks dropped, edge shrunk and softened inwards)', () => {
+  const w = 60, h = 40, img = rgba(w, h, () => [200, 40, 50, 255]);
+  const subject = new Uint8Array(w * h);
+  for (let y = 10; y < 30; y++) for (let x = 15; x < 45; x++) subject[y * w + x] = 1;
+  subject[2 * w + 2] = 1;                                                             // a floating speck
+  const hard = cutOut(img, subject, { feather: 0, minSubject: 4 });
+  assert.equal(hard.subject[2 * w + 2], 0, 'speck removed');
+  assert.equal(hard.alpha[20 * w + 30], 255);
+  assert.equal(hard.alpha[5 * w + 5], 0);
+  assert.ok(Math.abs(hard.removed - (1 - 600 / (w * h))) < 1e-9);
+  const shrunk = cutOut(img, subject, { feather: 0, shrink: 2, minSubject: 4 });
+  assert.ok(shrunk.subject.reduce((a, b) => a + b, 0) < 600 * 0.8);
+  const soft = cutOut(img, subject, { feather: 3, minSubject: 4 });
+  let partial = 0, halo = 0;
+  for (let i = 0; i < soft.alpha.length; i++) { if (soft.alpha[i] > 0 && soft.alpha[i] < 255) partial++; if (!hard.subject[i] && soft.alpha[i] > 0) halo++; }
+  assert.ok(partial > 50 && halo === 0);
+  assert.equal(soft.rgba[(20 * w + 30) * 4 + 3], 255);
+});

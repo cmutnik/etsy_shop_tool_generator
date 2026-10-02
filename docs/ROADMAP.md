@@ -2,7 +2,7 @@
 # Roadmap
 
 ## Done
-- **Image Prep** (`tools/image-prep/`): black & white (threshold / adaptive / dither), SVG line art (trace / edges / centre line), background removal and cut-out, colour posterize into registered layers for multi-colour stamps, hand-off to the stamp generator (with a "keep the picture's frame" option).
+- **Image Prep** (`tools/image-prep/`): presets, a print-width thin-detail check, zoom, mark-based background removal for busy photos, Bezier-fitted SVG curves, black & white (threshold / adaptive / dither), SVG line art (trace / edges / centre line), background removal and cut-out, colour posterize into registered layers for multi-colour stamps, hand-off to the stamp generator (with a "keep the picture's frame" option).
 - **3D Stamp Generator** (`tools/stamp/`): text, SVG/PNG/JPG logo, border, STL + 3MF export.
 - **QR Code Stand** (`tools/qr-stand/`): plate with icon/title banner and insertion tab, slotted base, assembled preview, STL and colour 3MF. Ported from `invite2svg/`; the Python page can be removed once you are happy with it.
 - **QR Code Keychain** (`tools/qr-keychain/`): QR plate + loop, raised/engraved, scan check, STL + colour 3MF. Ported from `invite2svg/`; the Python page can be removed once you are happy with it.
@@ -32,7 +32,7 @@ Suggested order: ~~QR keychain~~ -> ~~QR stand~~ -> wedding invite.
 Remove each `invite2svg/` page once its replacement ships.
 
 ## Ideas
-- Image Prep: presets ("logo", "photo", "handwriting"), registration marks / alignment keys on the layers and the matching stamp bases, ML-based background removal for busy scenes, Bezier curve fitting for the traced SVGs, and a hand-off to the QR keychain/stand banners.
+- Image Prep: registration marks / alignment keys on the layers and the matching stamp bases, a hand-off to the QR keychain/stand banners, undo for mark strokes, batch processing of several pictures, and moving the heavy work into a Web Worker for very large images.
 - Stamp: print all colour layers as one multi-part 3MF with an alignment frame.
 - STL / 3MF modifier: load a mesh (Three.js `STLLoader` / `3MFLoader`), scale, add a text label or hanging hole, re-export.
 - Stamp: curved/circular text for round seals, multiple-colour 3MF (separate relief/base objects), saved presets.
