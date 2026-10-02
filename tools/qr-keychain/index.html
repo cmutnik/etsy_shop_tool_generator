@@ -90,6 +90,20 @@
           <label>Neck width (mm) <input type="number" id="neckWidth" value="10" min="4" max="20" step="1"></label>
           <label>Neck height (mm) <input type="number" id="neckHeight" value="2" min="0" max="8" step="0.5"></label>
         </div>
+        <div id="headerOptions">
+          <label>Header shape
+            <select id="headerShape"></select>
+          </label>
+          <div class="row">
+            <label id="leanRow">Lean (%) <input type="number" id="lean" value="60" min="0" max="100" step="5"></label>
+            <label id="roundingRow">Corner rounding (mm) <input type="number" id="rounding" value="4" min="0" max="15" step="0.5"></label>
+          </div>
+          <div class="row">
+            <label>Move hole left / right (mm) <input type="number" id="holeOffsetX" value="0" min="-30" max="30" step="0.5"></label>
+            <label>Move hole up / down (mm) <input type="number" id="holeOffsetY" value="0" min="-20" max="20" step="0.5"></label>
+          </div>
+          <button type="button" id="resetHole" class="small">Reset hole position</button>
+        </div>
         <small class="muted" id="loopNote"></small>
       </fieldset>
 

@@ -11,7 +11,7 @@ assets/style.css            site-wide look & feel (light/dark)
 assets/tool.css             layout + controls shared by tool pages
 shared/js/                  code used by more than one tool
   geometry2d.js             "groups" ({outer, holes}) -> THREE.Shape, outline shapes, extrude, simplify
-  boolean2d.js              2D polygon union/difference (polygon-clipping) + circle / rounded-rectangle rings
+  boolean2d.js              2D polygon union/difference (polygon-clipping), circle / rounded-rectangle rings, corner fillets, collinear-point cleanup
   text-layout.js            opentype.js font + text -> groups
   svg-import.js             SVG text -> groups
   image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares

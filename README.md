@@ -20,6 +20,7 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 
 - Link or text to QR (error correction L/M/Q/H, module size, quiet zone), raised or engraved.
 - **Six loop styles**, above or below the code: round ring, rounded square, hexagon, teardrop, lanyard slot (a slot hole for a strap), and a full-width header with a hole. Every style keeps at least 2.5 mm of wall around the hole.
+- **Full-width header options:** the outline can be a rectangle, a true semicircle, or a triangle leaning left or right (adjustable lean), with adjustable corner rounding, and you can move the hole left/right and up/down. Moving the hole too close to an edge, off the shape, or into the plate gives a clear message instead of a weak or blocked hole.
 - **Scan check:** the model's own geometry is decoded in the page, so you know the code is readable before printing.
 - **Back engraving (optional):** the same QR cut, mirrored, into the underside so it reads correctly when you flip the keychain over, with the pockets coloured in the QR colour (bridged pockets; see the tool's tips for the filament changes).
 - Two-colour output: the page shows the height for a single filament change; the 3MF carries plate and QR colours.

@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import * as THREE from 'three';
 import jsQR from 'jsqr';
 import { buildKeychain } from '../tools/qr-keychain/geometry.js';
-import { loopFootprint, loopWall, LOOP_STYLES } from '../tools/qr-keychain/loops.js';
+import { loopFootprint, loopWall, LOOP_STYLES, HEADER_SHAPES, headerOutline } from '../tools/qr-keychain/loops.js';
 import { signedArea, pointInPoly } from '../shared/js/geometry2d.js';
 import { qrMatrix, gridRects, rasterizeTopDown, rasterizeBottomUp } from '../shared/js/qr-plate.js';
 import { export3MF, collectMesh } from '../shared/js/export.js';
@@ -371,4 +371,107 @@ test('every loop style also works with back engraving in both modes', () => {
       r.group.children.forEach(m => assertWatertight(m, assert));
       assert.equal(scan(r, mode), base.data, `${loopStyle}/${mode} front`);
     }
+});
+
+// ---- full-width header: shapes, rounding, moving the hole ----
+const HDR = { ...STYLE_OPTS, style: 'header', plateWidth: 38, size: 16 };
+const SHAPES = HEADER_SHAPES.map(s => s.id);
+
+test('header shapes: one solid piece with one open hole and the stated height, for every lean and rounding', () => {
+  for (const headerShape of SHAPES)
+    for (const lean of [0, 0.3, 0.6, 1])
+      for (const rounding of [0, 2, 6])
+        for (const sign of [1, -1]) {
+          const fp = loopFootprint({ ...HDR, headerShape, lean, rounding, sign });
+          const tag = `${headerShape} lean ${lean} r ${rounding} sign ${sign}`;
+          assert.equal(fp.groups.length, 1, tag);
+          assert.equal(fp.groups[0].holes.length, 1, tag);
+          assert.ok(!inside(fp.groups[0], fp.holeCentre), `${tag}: hole centre open`);
+          const ys = fp.groups[0].outer.map(p => p[1] * sign), xs = fp.groups[0].outer.map(p => p[0]);
+          const want = headerShape === 'semicircle' ? 19 : 16;       // semicircle: half the plate width; others: the size
+          assert.ok(Math.abs(Math.max(...ys) - want) < 1e-5, `${tag}: top ${Math.max(...ys)} vs ${want}`);
+          assert.ok(Math.abs(Math.min(...ys) + 0.2) < 1e-9, `${tag}: sunk into the plate`);
+          assert.ok(Math.abs(Math.max(...xs) - 19) < 1e-9 && Math.abs(Math.min(...xs) + 19) < 1e-9, `${tag}: as wide as the plate`);
+        }
+});
+
+test('header: the semicircle is a true semicircle and the rectangle rounds only its top corners', () => {
+  const semi = headerOutline({ plateWidth: 38, size: 16, headerShape: 'semicircle' });
+  assert.equal(semi.height, 19);
+  const arc = semi.ring.filter(p => p[1] > 1e-9);
+  assert.ok(arc.length > 50);
+  for (const [x, y] of arc) assert.ok(Math.abs(Math.hypot(x, y) - 19) < 1e-9, 'every arc point is 19 mm from the middle of the plate edge');
+  const rect = headerOutline({ plateWidth: 38, size: 16, headerShape: 'rectangle', rounding: 4 }).ring;
+  assert.ok(rect.some(p => p[0] === -19 && p[1] === -0.2) && rect.some(p => p[0] === 19 && p[1] === -0.2), 'bottom corners stay square');
+  assert.ok(!rect.some(p => Math.abs(p[0]) > 18.99 && p[1] > 15.99), 'top corners are rounded off');
+});
+
+test('header: triangles lean towards the named side, and lean 1 is a right triangle flush with the plate edge', () => {
+  const apexX = fp => { const g = fp.groups[0].outer; const top = Math.max(...g.map(p => p[1])); const pts = g.filter(p => p[1] > top - 0.05); return pts.reduce((a, p) => a + p[0], 0) / pts.length; };
+  for (const lean of [0.3, 0.6, 1]) {
+    const L = apexX(loopFootprint({ ...HDR, headerShape: 'triangle-left', lean, rounding: 3 })), Rr = apexX(loopFootprint({ ...HDR, headerShape: 'triangle-right', lean, rounding: 3 }));
+    assert.ok(L < 0 && Rr > 0 && Math.abs(L + Rr) < 1e-6, `lean ${lean}: left ${L}, right ${Rr}`);
+  }
+  assert.ok(Math.abs(apexX(loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 0, rounding: 3 }))) < 1e-6, 'lean 0 is centred');
+  // more lean = apex further to the side
+  assert.ok(apexX(loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 0.9, rounding: 3 })) > apexX(loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 0.4, rounding: 3 })));
+  // right triangle: one vertical edge exactly at the plate's right edge (all points near x=19 are collinear-free)
+  const tri = loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 1, rounding: 0 }).groups[0].outer;
+  assert.ok(tri.filter(p => Math.abs(p[0] - 19) < 1e-9).some(p => Math.abs(p[1] - 16) < 1e-9), 'apex directly above the right-hand corner');
+});
+
+test('header: rounding rounds the apex (more vertices, smoother) and never exceeds the stated height', () => {
+  for (const headerShape of ['rectangle', 'triangle-left', 'triangle-right']) {
+    const sharp = loopFootprint({ ...HDR, headerShape, rounding: 0 }).groups[0].outer.length;
+    const round = loopFootprint({ ...HDR, headerShape, rounding: 5 }).groups[0].outer.length;
+    assert.ok(round > sharp + 8, `${headerShape}: ${round} vs ${sharp} vertices`);
+  }
+});
+
+test('header: the hole moves exactly by the offsets, and its default spot is comfortable for every shape', () => {
+  for (const headerShape of SHAPES) {
+    const def = loopFootprint({ ...HDR, headerShape });
+    const moved = loopFootprint({ ...HDR, headerShape, holeOffsetX: 1.5, holeOffsetY: 0.5 });
+    assert.ok(Math.abs(moved.holeCentre[0] - def.holeCentre[0] - 1.5) < 1e-9 && Math.abs(moved.holeCentre[1] - def.holeCentre[1] - 0.5) < 1e-9, headerShape);
+    // the cut-out in the footprint really is centred there
+    const ring = moved.groups[0].holes[0];
+    const cx = ring.reduce((a, p) => a + p[0], 0) / ring.length, cy = ring.reduce((a, p) => a + p[1], 0) / ring.length;
+    assert.ok(Math.abs(cx - moved.holeCentre[0]) < 1e-6 && Math.abs(cy - moved.holeCentre[1]) < 1e-6, `${headerShape}: hole ring centre`);
+    assert.ok(inside(moved.groups[0], [moved.holeCentre[0], moved.holeCentre[1] + 5]) || headerShape !== 'rectangle');
+    // below the plate, the hole centre's y is mirrored but x is not
+    const below = loopFootprint({ ...HDR, headerShape, holeOffsetX: 1.5, holeOffsetY: 0.5, sign: -1 });
+    assert.ok(Math.abs(below.holeCentre[0] - moved.holeCentre[0]) < 1e-9 && Math.abs(below.holeCentre[1] + moved.holeCentre[1]) < 1e-9);
+  }
+});
+
+test('header: unreasonable hole positions give clear errors', () => {
+  assert.throws(() => loopFootprint({ ...HDR, holeOffsetY: -6 }), /cut into the plate/);
+  assert.throws(() => loopFootprint({ ...HDR, holeOffsetY: 5 }), /at least 2\.5 mm of wall/);
+  assert.throws(() => loopFootprint({ ...HDR, holeOffsetX: 17 }), /at least 2\.5 mm of wall/);
+  assert.throws(() => loopFootprint({ ...HDR, holeOffsetX: 40 }), /outside the header shape/);       // outside the shape entirely
+  assert.throws(() => loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 1, holeOffsetX: 12 }), /wall|plate|outside the header/);
+  assert.doesNotThrow(() => loopFootprint({ ...HDR, holeOffsetX: 12 }));
+  assert.throws(() => loopFootprint({ ...HDR, headerShape: 'hexagon' }), /Unknown header shape/);
+});
+
+test('header shapes build into watertight meshes that scan, in every mode, orientation and with back engraving', () => {
+  for (const headerShape of SHAPES)
+    for (const mode of ['raised', 'indented'])
+      for (const loopPosition of ['above', 'below'])
+        for (const backDepth of [0, 0.8]) {
+          const r = buildKeychain({ ...base, thickness: 4, loopStyle: 'header', headerShape, lean: 0.6, rounding: 4, holeOffsetX: 2, mode, loopPosition, backDepth });
+          r.group.children.forEach(m => assertWatertight(m, assert));
+          assert.equal(scan(r, mode), base.data, `${headerShape}/${mode}/${loopPosition}/${backDepth}`);
+          assert.ok(Math.abs(r.info.width - r.info.plateSize) < 0.02, 'header is as wide as the plate');
+          assert.deepEqual(r.info.holeCentre.map(v => +v.toFixed(3)).length, 2);
+        }
+});
+
+test('header: overall size follows the shape', () => {
+  const P = buildKeychain({ ...base, loopStyle: 'header' }).info.plateSize;
+  const depth = headerShape => buildKeychain({ ...base, loopStyle: 'header', headerShape, lean: 0.6, rounding: 4 }).info.depth;
+  assert.ok(Math.abs(depth('rectangle') - (P + 16)) < 0.02);
+  assert.ok(Math.abs(depth('semicircle') - (P + P / 2)) < 0.02);
+  assert.ok(Math.abs(depth('triangle-left') - (P + 16)) < 0.02);
+  assert.ok(Math.abs(depth('triangle-right') - (P + 16)) < 0.02);
 });

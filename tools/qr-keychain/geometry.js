@@ -16,6 +16,8 @@ import { loopFootprint, loopWall, loopStyle, MIN_WALL, OVERLAP } from './loops.j
  *  loopStyle ('round'|'rounded-square'|'hexagon'|'teardrop'|'lanyard-slot'|'header', default 'round'; see loops.js),
  *  loopPosition ('above'|'below'), loopDiameter (the loop's size: diameter, side, height... depending on the style),
  *  holeDiameter, slotLength (lanyard-slot), neckWidth, neckHeight, baseColor, qrColor
+ *  header only: headerShape ('rectangle'|'semicircle'|'triangle-left'|'triangle-right'), lean (0-1), rounding (mm),
+ *  holeOffsetX, holeOffsetY (mm; move the hole from its default position)
  * @returns {{ group: THREE.Group, info: object }}
  * @throws {Error} with a user-facing message for invalid input
  */
@@ -23,7 +25,8 @@ export function buildKeychain(o) {
   const warnings = [];
   const style = o.loopStyle || 'round';
   if (!loopStyle(style)) throw new Error(`Unknown loop style: ${style}`);
-  const wall = loopWall({ style, size: o.loopDiameter, holeDiameter: o.holeDiameter });
+  // (the header checks its own wall, since it depends on the plate width, the shape and where the hole is)
+  const wall = style === 'header' ? Infinity : loopWall({ style, size: o.loopDiameter, holeDiameter: o.holeDiameter });
   if (wall < MIN_WALL) throw new Error(`Loop size must leave at least ${MIN_WALL} mm of wall around the hole to stay sturdy (now ${wall.toFixed(1)} mm).`);
   if (o.mode === 'indented' && o.depth >= o.thickness - 0.4) throw new Error('Engrave depth must be at least 0.4 mm less than the plate thickness.');
 
@@ -48,6 +51,7 @@ export function buildKeychain(o) {
   const footprint = loopFootprint({
     style, size: o.loopDiameter, holeDiameter: o.holeDiameter, slotLength: o.slotLength ?? 14,
     neckWidth: o.neckWidth, neckHeight: o.neckHeight, plateWidth: P, sign,
+    headerShape: o.headerShape, lean: o.lean, rounding: o.rounding, holeOffsetX: o.holeOffsetX, holeOffsetY: o.holeOffsetY,
   });
   const shape = groupsToShapes(footprint.groups);
   const place = g => { g.translate(P / 2, sign > 0 ? P : 0, 0); return g; };
@@ -101,6 +105,7 @@ export function buildKeychain(o) {
       filamentChangeZs: plate.filamentChangeZs,
       backDepth: back,
       loopStyle: style,
+      holeCentre: footprint.holeCentre,
       warnings,
     },
   };

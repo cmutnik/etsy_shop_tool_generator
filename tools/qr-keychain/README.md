@@ -5,6 +5,7 @@ Live. Port of `invite2svg/pages/3_*QR_Code_Keychain.py` (+ `build_qr_plate_mesh`
 
 - `geometry.js` - `buildKeychain(params)` -> `THREE.Group` + info. DOM-free, tested in `tests/qr-keychain.test.mjs`.
 - `loops.js` - the six loop styles (`LOOP_STYLES`, `loopFootprint()`): each is a 2D shape plus a neck, minus a hole, built with polygon booleans from `shared/js/boolean2d.js` and then extruded.
+- Header details: `headerOutline()` builds the four outlines (`HEADER_SHAPES`): a rectangle with rounded top corners, a true semicircle (height = half the plate width), and triangles (apex `lean` 0-100% towards the left or right; 100% is a right triangle flush with the plate edge). The base always spans the plate width and sinks 0.2 mm into it. Rounding a triangle's apex would shorten it, so the builder raises the virtual apex until the finished top is exactly the stated size. The hole's default spot is the middle of the largest comfortable circle (centre for the rectangle, incentre for triangles); `holeOffsetX/Y` move it from there. `headerCheck()` refuses a hole that is outside the shape, cuts into the plate, or leaves under 2.5 mm of wall.
 - `keychain.js` / `index.html` - the page. Includes an in-page **scan check**: the generated geometry is rasterised top-down and decoded with jsQR.
 - QR encoding and plate boxes live in `shared/js/qr-plate.js` so the QR stand can reuse them.
 
