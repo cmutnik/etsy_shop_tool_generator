@@ -25,6 +25,7 @@ shared/js/                  code used by more than one tool
   qr-plate.js               QR matrix -> plate of boxes (raised/engraved), top-down raster for scan checks
   fonts.js                  font catalogue + loading
   viewer.js                 Three.js preview (z-up, print-bed grid, orbit controls)
+  nav.js                    header navigation: lists every live tool from tools/registry.json, marks the current page (no dependencies)
   download.js               saveBlob-as-download helper (no dependencies)
   export.js                 binary STL, 3MF, zip writer, download helper
 tools/
@@ -44,6 +45,7 @@ invite2svg/                 legacy Python/Streamlit app, being ported (see roadm
 - Model units are **mm**, **z up**, built so the object can be exported as-is: the printed surface that must be flat is at z = 0.
 - Keep parts watertight individually; overlap touching parts slightly (see `OVERLAP` in the stamp) instead of leaving coplanar faces.
 - Every source file starts with `Copyright (c) 2025 cmutnik` as a comment in that file's syntax (`//`, `/* */`, `<!-- -->`, `#`). JSON files and `LICENSE` are exempt.
+- Every page starts with the shared header: `<header class="site"><a class="brand" href="../../">Etsy Shop Tools</a><nav id="toolnav" aria-label="Tools"></nav></header>` and ends with `<script type="module" src="../../shared/js/nav.js"></script>`. The links come from the registry, so a new tool shows up on every page by itself (`tests/nav.test.mjs` checks the pages and the registry).
 - Add the tool to `tools/registry.json`. Anything a second tool needs goes into `shared/js/` (don't import across `tools/`).
 - Each page repeats the import map (browsers don't allow external ones) - keep versions identical across pages.
 

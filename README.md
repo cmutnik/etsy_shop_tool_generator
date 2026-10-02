@@ -80,7 +80,7 @@ Enable GitHub Pages on the repo root: Settings > Pages > Deploy from branch `mai
 
 ## Contributing a new tool
 
-Create `tools/<id>/`, keep model-building code free of DOM access so it can be tested in Node, put anything a second tool needs into `shared/js/`, and add an entry to `tools/registry.json`. Conventions (units, orientation, copyright header) are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Create `tools/<id>/`, keep model-building code free of DOM access so it can be tested in Node, put anything a second tool needs into `shared/js/`, and add an entry to `tools/registry.json` (it then appears in the home page and in the navigation bar on every page; copy the header from an existing tool page). Conventions (units, orientation, copyright header) are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## License
 

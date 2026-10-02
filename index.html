@@ -9,10 +9,15 @@
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <header class="site"><h1>Etsy Shop Tools</h1><span style="color:var(--muted)">Free, in-browser helpers for makers. Nothing is uploaded.</span></header>
+  <header class="site">
+    <a class="brand" href="./">Etsy Shop Tools</a>
+    <nav id="toolnav" aria-label="Tools"></nav>
+    <span class="tagline">Free, in-browser helpers for makers. Nothing is uploaded.</span>
+  </header>
   <main>
     <div class="cards" id="cards"></div>
   </main>
+  <script type="module" src="shared/js/nav.js"></script>
   <script>
     // Cards are generated from tools/registry.json - add a tool there, not here.
     fetch('tools/registry.json').then(r => r.json()).then(tools => {
