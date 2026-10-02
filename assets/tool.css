@@ -55,3 +55,4 @@ button.primary.secondary:hover { background: var(--bg); }
 .controls input[type=text] { display: block; width: 100%; margin-top: 3px; padding: 6px 8px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 .controls input[type=color] { display: block; width: 100%; height: 34px; margin-top: 3px; padding: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 button.small { padding: 4px 10px; font-size: 13px; margin-top: 8px; }
+[hidden] { display: none !important; }   /* so the hidden attribute wins over display rules like .muted { display: block } */

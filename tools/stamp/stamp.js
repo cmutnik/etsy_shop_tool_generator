@@ -49,8 +49,9 @@ function updateLogo() {
   if (!logoSource) { logo = null; return; }
   try {
     logo = logoSource.kind === 'svg'
-      ? svgToGroups(logoSource.text, { ignoreWhite: $('ignoreWhite').checked })
+      ? svgToGroups(logoSource.text, { ignoreWhite: $('ignoreWhite').checked, frame: $('logoFrame').checked })
       : imageToGroups(logoSource.image, {
+        frame: $('logoFrame').checked,
         source: $('source').value,
         threshold: $('autoThreshold').checked ? 'auto' : num('threshold'),
         smooth: num('smooth'),
@@ -70,8 +71,7 @@ function updateLogo() {
   }
 }
 
-$('logoFile').addEventListener('change', async e => {
-  const file = e.target.files[0];
+async function setLogoFile(file) {
   if (!file) { logoSource = null; rebuild(true); return; }
   statusEl.textContent = 'Reading logo...';
   try {
@@ -82,7 +82,26 @@ $('logoFile').addEventListener('change', async e => {
     statusEl.textContent = 'Could not open that image.';
   }
   rebuild(true);
-});
+}
+$('logoFile').addEventListener('change', e => { $('logoFrom').hidden = true; setLogoFile(e.target.files[0]); });
+
+// A picture sent over from the Image Prep tool (see tools/image-prep): use it as the logo.
+async function takeHandoff() {
+  let raw = null;
+  try { raw = sessionStorage.getItem('etsytools.handoff'); sessionStorage.removeItem('etsytools.handoff'); } catch { /* storage blocked */ }
+  if (!raw) return;
+  try {
+    const { name, type, dataUrl, frame } = JSON.parse(raw);
+    $('logoFrame').checked = !!frame;
+    const blob = await (await fetch(dataUrl)).blob();
+    $('artMode').value = 'logo';
+    await setLogoFile(new File([blob], name, { type }));
+    $('logoFrom').textContent = `Using ${name} from Image Prep. Choose a file above to replace it.`;
+    $('logoFrom').hidden = false;
+  } catch {
+    statusEl.textContent = 'Could not use the picture from Image Prep.';
+  }
+}
 
 // ---------- build ----------
 let stamp = null;
@@ -161,7 +180,7 @@ function doBuild() {
   $('download').disabled = $('download3mf').disabled = $('download3mfParts').disabled = empty;
 }
 
-const LOGO_OPTS = ['threshold', 'autoThreshold', 'invert', 'source', 'smooth', 'specks', 'ignoreWhite'];
+const LOGO_OPTS = ['threshold', 'autoThreshold', 'invert', 'source', 'smooth', 'specks', 'ignoreWhite', 'logoFrame'];
 $('controls').addEventListener('input', e => rebuild(LOGO_OPTS.includes(e.target.id)));
 $('controls').addEventListener('change', e => rebuild(LOGO_OPTS.includes(e.target.id)));
 
@@ -186,3 +205,4 @@ $('download3mfParts').addEventListener('click', () => {
 });
 
 selectFont();
+takeHandoff();

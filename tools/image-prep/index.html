@@ -1,0 +1,203 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Image Prep - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <link rel="stylesheet" href="prep.css">
+</head>
+<body>
+  <header class="site">
+    <a href="../../"><h1>Etsy Shop Tools</h1></a>
+    <span>Image Prep</span>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Image</legend>
+        <label>Choose a picture <small>(PNG, JPG, WebP - or drop one on the preview)</small>
+          <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp">
+        </label>
+        <label>Working size
+          <select id="maxSide">
+            <option value="800">800 px (fast)</option>
+            <option value="1200" selected>1200 px</option>
+            <option value="1600">1600 px</option>
+            <option value="2400">2400 px (slow, most detail)</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Output</legend>
+        <div class="seg seg4" role="group" aria-label="Output type">
+          <button type="button" data-out="png" class="active">Black &amp; white</button>
+          <button type="button" data-out="svg">Line art (SVG)</button>
+          <button type="button" data-out="colors">Colours</button>
+          <button type="button" data-out="cutout">Cut-out</button>
+        </div>
+        <div id="svgStyle">
+          <label>Line art style
+            <select id="lineStyle">
+              <option value="trace">Trace shapes - logos, silhouettes, drawings</option>
+              <option value="edges">Outline edges - turn a photo into a line drawing</option>
+              <option value="centerline">Centre line - pen strokes, handwriting, line drawings</option>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset id="bgBox">
+        <legend>Background</legend>
+        <label class="inline" id="bgRemoveRow"><input type="checkbox" id="bgRemove"> Remove the background first</label>
+        <div id="bgOptions">
+          <label>Background colour
+            <select id="bgMode"><option value="auto">Auto - the colour along the picture's edge</option><option value="pick">Pick a colour</option></select>
+          </label>
+          <label id="bgColorRow">Colour <input type="color" id="bgColor" value="#ffffff"> <small class="muted-inline">or click the original picture</small></label>
+          <label>Tolerance <input type="range" id="bgTolerance" value="25" min="3" max="80" step="1"></label>
+          <label class="inline"><input type="checkbox" id="bgContiguous" checked> Only remove background connected to the edge <small class="muted-inline">(keeps same-coloured areas inside the subject)</small></label>
+          <label class="inline"><input type="checkbox" id="bgGradient" checked> Follow gradients and soft shadows <small class="muted-inline">(a sharp outline still stops it)</small></label>
+          <div class="row">
+            <label>Soft edge (px) <input type="number" id="bgFeather" value="1" min="0" max="8" step="1"></label>
+            <label>Shrink edge (px) <input type="number" id="bgShrink" value="0" min="0" max="6" step="1"></label>
+          </div>
+          <small class="muted" id="bgInfo"></small>
+        </div>
+      </fieldset>
+
+      <fieldset id="toneBox">
+        <legend>Black &amp; white</legend>
+        <label>Read the picture from
+          <select id="source">
+            <option value="auto">Auto (transparency if present, else brightness)</option>
+            <option value="brightness">Brightness - dark parts become black</option>
+            <option value="alpha">Transparency - opaque parts become black</option>
+          </select>
+        </label>
+        <label>Method
+          <select id="method">
+            <option value="threshold">Threshold - clean, solid black and white</option>
+            <option value="adaptive">Adaptive - for shadows and uneven light</option>
+            <option value="dither" id="ditherOpt">Dither - halftone dots, keeps shading</option>
+          </select>
+        </label>
+        <div id="thresholdBox">
+          <label class="inline"><input type="checkbox" id="autoThreshold" checked> Auto threshold <span id="thrValue" class="muted-inline"></span></label>
+          <label>Threshold <input type="range" id="threshold" value="128" min="5" max="250" disabled></label>
+        </div>
+        <div id="adaptiveBox" class="row">
+          <label>Local area (px) <input type="number" id="adaptiveRadius" value="25" min="3" max="200" step="1"></label>
+          <label>Sensitivity <input type="number" id="adaptiveOffset" value="8" min="0" max="60" step="1"></label>
+        </div>
+        <div class="row">
+          <label>Smoothing <input type="range" id="blur" value="1" min="0" max="5" step="0.5"></label>
+          <label class="inline"><input type="checkbox" id="stretch" checked> Auto contrast</label>
+        </div>
+        <label class="inline"><input type="checkbox" id="invert"> Invert (swap black and white)</label>
+      </fieldset>
+
+      <fieldset id="edgeBox">
+        <legend>Outline edges</legend>
+        <label>Source <select id="edgeSource"><option value="auto">Auto</option><option value="brightness">Brightness</option><option value="alpha">Transparency</option></select></label>
+        <div class="row">
+          <label>Smoothing <input type="range" id="edgeSigma" value="1.6" min="0.8" max="4" step="0.2"></label>
+          <label>Detail <input type="range" id="edgeSens" value="50" min="5" max="95" step="5"></label>
+        </div>
+        <div class="row">
+          <label>Line thickness (px) <input type="number" id="lineWidth" value="2" min="1" max="10" step="1"></label>
+          <label class="inline"><input type="checkbox" id="edgeInvert"> Invert</label>
+        </div>
+        <small class="muted">Smoothing hides texture and noise; more detail finds fainter lines.</small>
+      </fieldset>
+
+      <fieldset id="centerBox">
+        <legend>Centre line</legend>
+        <div class="row">
+          <label>Line thickness (px) <input type="number" id="clWidth" value="4" min="1" max="30" step="1"></label>
+          <label>Ignore short branches (px) <input type="number" id="clPrune" value="8" min="0" max="60" step="1"></label>
+        </div>
+        <label>Result
+          <select id="clOutput">
+            <option value="filled">Filled shapes - works in the stamp generator</option>
+            <option value="strokes">Strokes - editable lines in a vector editor</option>
+          </select>
+        </label>
+        <small class="muted">Every stroke is reduced to its middle and redrawn at one thickness, so the line work is even and prints well. Free ends shorten by about half the original stroke width.</small>
+      </fieldset>
+
+      <fieldset id="colorsBox">
+        <legend>Colours</legend>
+        <label>Number of colours <span id="nColorsValue" class="muted-inline">4</span> <input type="range" id="nColors" value="4" min="2" max="8" step="1"></label>
+        <label>Smoothing <input type="range" id="posterSmooth" value="1" min="0" max="3" step="1"></label>
+        <label>Paper colour <small class="muted-inline">(not printed - click a swatch to change, click again for none)</small></label>
+        <div id="palette" class="palette"></div>
+        <small class="muted">Each remaining colour becomes its own layer. All layers share one frame, so stamps made from them line up.</small>
+      </fieldset>
+
+      <fieldset id="svgBox">
+        <legend>SVG</legend>
+        <label class="inline"><input type="checkbox" id="smoothCurves" checked> Smooth curves</label>
+        <label>Path simplification <input type="range" id="tolerance" value="0.7" min="0.2" max="3" step="0.1"></label>
+        <small class="muted">Higher simplification means fewer points and a smaller file, but less exact edges.</small>
+      </fieldset>
+
+      <fieldset>
+        <legend>Clean up</legend>
+        <div class="row">
+          <label>Remove specks (px) <input type="number" id="minInk" value="12" min="0" max="2000" step="2"></label>
+          <label>Fill tiny holes (px) <input type="number" id="fillHoles" value="0" min="0" max="2000" step="2"></label>
+        </div>
+        <label class="inline"><input type="checkbox" id="crop"> Trim empty margins</label>
+        <div class="row" id="cropRow"><label>Margin to keep (px) <input type="number" id="cropPad" value="8" min="0" max="200" step="1"></label></div>
+        <div class="row">
+          <label>Ink colour <input type="color" id="color" value="#000000"></label>
+          <label class="inline" id="paperRow"><input type="checkbox" id="transparent"> Transparent background</label>
+        </div>
+      </fieldset>
+
+      <button id="downloadPng" class="primary">Download PNG</button>
+      <button id="downloadSvg" class="primary">Download SVG</button>
+      <button id="downloadZip" class="primary">Download all layers (ZIP)</button>
+      <div class="row" id="colorExtras"><button id="downloadCombined" class="primary secondary" type="button">Combined SVG</button><button id="downloadPreview" class="primary secondary" type="button">Preview PNG</button></div>
+      <button id="toStamp" class="primary secondary" style="margin-top:8px">Use in the 3D stamp generator</button>
+      <div id="error" class="error" hidden></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar"><span id="status" class="status"></span></div>
+      <div class="compare" id="drop">
+        <figure>
+          <figcaption>Original</figcaption>
+          <div class="frame"><canvas id="original"></canvas><p class="placeholder" id="placeholder">Choose or drop a picture to start.</p></div>
+        </figure>
+        <figure>
+          <figcaption>Result</figcaption>
+          <div class="frame checker"><canvas id="resultPng"></canvas><img id="resultSvg" alt="Line art result"></div>
+        </figure>
+      </div>
+      <div id="layersBox" class="layers-box"><h3>Layers <small>one stamp per ink colour</small></h3><div id="layers" class="layers"></div></div>
+      <div id="info" class="info"></div>
+      <details class="tips" open>
+        <summary>Which setting should I use?</summary>
+        <ul>
+          <li><b>Logo or drawing on a plain background:</b> Black &amp; white with <b>Threshold</b> (auto). For a vector you can scale, choose Line art with <b>Trace shapes</b>.</li>
+          <li><b>Phone photo of a drawing or page (shadows, uneven light):</b> <b>Adaptive</b>, with a local area about a tenth of the picture's width.</li>
+          <li><b>Photo to line drawing:</b> Line art with <b>Outline edges</b>. Raise smoothing to ignore texture, raise detail for fainter lines, and thicken the line so it prints.</li>
+          <li><b>Remove the background:</b> Auto reads the colour along the picture's edge. Raise the tolerance for shadows or gradients, shrink the edge to lose a fringe, and leave "only connected to the edge" on so white eyes or highlights inside the subject survive. It works best on plain or evenly lit backgrounds, not busy scenes.</li>
+          <li><b>Multi-colour stamps:</b> choose Colours. You get one layer per ink colour, all on the same frame. Send each layer to the stamp generator (it keeps the frame), use the same stamp size every time, and print one stamp per ink. Keep the stamps' outer shape identical so they register by their edges.</li>
+          <li><b>Pen strokes and handwriting:</b> Line art with Centre line gives one even thickness everywhere, which is what a printer wants.</li>
+          <li><b>Shaded picture as dots:</b> <b>Dither</b> (PNG only).</li>
+          <li><b>Stamps and 3D printing:</b> keep shapes bold. Thin lines under about 0.6 mm at print size will not print, so thicken lines or remove specks here, then use the button to send it to the stamp generator.</li>
+          <li>Everything runs in your browser; the picture is never uploaded.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="prep.js"></script>
+</body>
+</html>

@@ -7,6 +7,13 @@
     "status": "live"
   },
   {
+    "id": "image-prep",
+    "title": "Image Prep",
+    "description": "Black & white, SVG line art (trace, edges, centre line), background removal and colour layers for multi-colour stamps.",
+    "path": "image-prep/",
+    "status": "live"
+  },
+  {
     "id": "qr-stand",
     "title": "QR Code Stand",
     "description": "Embossed QR plate plus a slotted base, with optional icon and title banner.",
