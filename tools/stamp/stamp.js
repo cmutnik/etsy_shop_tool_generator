@@ -11,6 +11,7 @@ const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
 const statusEl = $('status');
 const viewer = createViewer($('viewport'));
+const STAMP_PARTS = [{ name: 'relief', label: 'Stamp face (artwork)' }, { name: 'base', label: 'Base and handle', names: ['base', 'handle'] }];
 
 // ---------- fonts ----------
 let font = null;
@@ -157,7 +158,7 @@ function doBuild() {
   if (thin.thinFraction > 0.03) warnings.push(`${(thin.thinFraction * 100).toFixed(0)}% of the artwork is thinner than ${MIN_FEATURE_MM} mm (red in the imprint preview) and may print poorly or break off. Enlarge the stamp, use a bolder font, or simplify the logo (more smoothing, higher speck removal).`);
   $('warnings').replaceChildren(...warnings.map(t => Object.assign(document.createElement('div'), { textContent: t })));
   const empty = !stamp.children.some(c => c.name === 'relief');
-  $('download').disabled = $('download3mf').disabled = empty;
+  $('download').disabled = $('download3mf').disabled = $('download3mfParts').disabled = empty;
 }
 
 const LOGO_OPTS = ['threshold', 'autoThreshold', 'invert', 'source', 'smooth', 'specks', 'ignoreWhite'];
@@ -177,5 +178,11 @@ function filename(ext) {
 }
 $('download').addEventListener('click', () => downloadBlob(exportSTL(stamp), filename('stl')));
 $('download3mf').addEventListener('click', () => downloadBlob(export3MF(stamp, { title: 'Stamp' }), filename('3mf')));
+// Two parts for a multi-material printer: face = slot 1, base + handle = slot 2. Rebuilt so the parts meet
+// exactly at the face/base plane (the single-mesh model overlaps them so slicers can union it).
+$('download3mfParts').addEventListener('click', () => {
+  const { group } = buildStamp({ ...readParams(), separateParts: true });
+  downloadBlob(export3MF(group, { title: 'Stamp', parts: STAMP_PARTS }), filename('2-parts.3mf'));
+});
 
 selectFont();

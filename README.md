@@ -29,8 +29,8 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Shapes:** rectangle with corner radius, or circle/oval. Optional round knob or grip bar handle, and an "up" arrow on the base.
 - **Logo cleanup (PNG/JPG):** read from transparency or brightness, auto threshold, smoothing, speck removal, invert. SVG white backgrounds are dropped automatically.
 - **Previews:** a 3D view (print orientation or stamp face) and a flat imprint preview of what it leaves on paper, with details thinner than 0.6 mm highlighted in red.
-- **Print-ready output:** downloads as STL or 3MF, in millimetres. The stamp face is at z = 0, so it prints **face-down on the bed with no supports**, and the artwork is mirrored on the face so it stamps the right way round. Parts overlap slightly so slicers merge them cleanly.
-- **Suggested print settings:** 0.4 mm nozzle, 0.12-0.16 mm layers, 3+ walls, 20%+ infill, PLA or PETG, smooth PEI sheet, ironing off. Use standard water- or pigment-based stamp ink.
+- **Print-ready output:** downloads as STL, 3MF, or a **2-part 3MF** (artwork face = filament slot 1, base and handle = slot 2) for a multi-material printer, e.g. a flexible TPU face on a rigid PETG/PLA base. All in millimetres. The stamp face is at z = 0, so it prints **face-down on the bed with no supports**, and the artwork is mirrored on the face so it stamps the right way round. Parts overlap slightly so slicers merge them cleanly.
+- **Suggested print settings:** 0.4 mm nozzle, 0.12-0.16 mm layers, 3+ walls, 20%+ infill, smooth PEI sheet, ironing off. PLA/PETG are the easy rigid choices; TPU (about 95A) gives a face that conforms to the paper for more even ink transfer, but print it slowly with a direct-drive extruder, and prefer a rigid base and handle over an all-TPU stamp. The page's tips cover materials and ink in more detail.
 
 ## Run it locally
 

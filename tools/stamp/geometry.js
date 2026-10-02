@@ -46,17 +46,20 @@ function place(layout, region, fit) {
  *  border (bool), borderWidth, margin (gap between outer edge and relief)
  *  relief, baseThickness
  *  handle ('none'|'knob'|'bar'), handleSize, handleHeight, marker (bool)
+ *  separateParts (bool): build the face (relief) and the base/handle so they meet exactly at the face/base plane
+ *    instead of overlapping, for a multi-part 3MF where each part gets its own filament slot
  * @returns {{ group: THREE.Group, info: object }}
  */
 export function buildStamp(o) {
   const group = new THREE.Group();
   const relief = o.relief, base = o.baseThickness;
+  const fuse = o.separateParts ? 0 : OVERLAP; // single mesh: relief and base interpenetrate so slicers union them
   const warnings = [];
   const parts = { relief: [], base: [], handle: [] };
   const imprint = []; // everything that touches the paper, as groups in mm (reads correctly)
 
   // base plate: sits on top of the relief
-  parts.base.push(extrudeShapes([outlineShape(o.shape, o.width, o.height, o.cornerRadius)], base + OVERLAP, relief - OVERLAP));
+  parts.base.push(extrudeShapes([outlineShape(o.shape, o.width, o.height, o.cornerRadius)], base + fuse, relief - fuse));
 
   // border ring
   const inset = o.margin;
@@ -66,7 +69,7 @@ export function buildStamp(o) {
     const outer = outlineShape(o.shape, o.width - 2 * inset, o.height - 2 * inset, o.cornerRadius - inset);
     const inner = outlineShape(o.shape, o.width - 2 * (inset + bw), o.height - 2 * (inset + bw), o.cornerRadius - inset - bw);
     outer.holes.push(new THREE.Path(inner.getPoints(48)));
-    parts.relief.push(extrudeShapes([outer], relief + OVERLAP));
+    parts.relief.push(extrudeShapes([outer], relief + fuse));
     const xy = shape => shape.getPoints(48).map(p => [p.x, p.y]);
     imprint.push({ outer: xy(outer), holes: [xy(inner)] });
     if (bw < 0.8) warnings.push(`Border is ${bw.toFixed(2)} mm wide - thinner than 2 nozzle widths (0.8 mm), it may print poorly.`);
@@ -98,7 +101,7 @@ export function buildStamp(o) {
       if (effSize < 4) warnings.push(`Effective font size is ${effSize.toFixed(1)} mm - fine details may be lost at a 0.4 mm nozzle. Use a bolder font, a larger stamp, or less text.`);
     }
   }
-  if (art.length) { parts.relief.push(extrudeShapes(groupsToShapes(art), relief + OVERLAP)); imprint.push(...art); }
+  if (art.length) { parts.relief.push(extrudeShapes(groupsToShapes(art), relief + fuse)); imprint.push(...art); }
   if (!parts.relief.length) warnings.push('Nothing to stamp yet - enter some text, add a logo, or enable the border.');
 
   // handle

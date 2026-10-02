@@ -74,7 +74,7 @@ test('export: 3MF is a valid zip with matching counts; STL has the right size', 
     const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), '3mf-')), 't.3mf');
     fs.writeFileSync(file, Buffer.from(buf));
     assert.match(execFileSync('unzip', ['-t', file]).toString(), /No errors detected/);
-    const xml = execFileSync('unzip', ['-p', file, '3D/3dmodel.model']).toString();
+    const xml = execFileSync('unzip', ['-p', file, '3D/3dmodel.model'], { maxBuffer: 1 << 28 }).toString();
     assert.equal((xml.match(/<vertex /g) || []).length, verts.length / 3);
     assert.equal((xml.match(/<triangle /g) || []).length, tris.length / 3);
     assert.match(xml, /unit="millimeter"/);
@@ -87,4 +87,61 @@ test('export: 3MF is a valid zip with matching counts; STL has the right size', 
 
 test('crc32 known vector', () => {
   assert.equal(crc32(new TextEncoder().encode('123456789')), 0xcbf43926);
+});
+
+// ---- two-part 3MF (face = slot 1, base + handle = slot 2) ----
+const STAMP_PARTS = [{ name: 'relief', label: 'Stamp face (artwork)' }, { name: 'base', label: 'Base and handle', names: ['base', 'handle'] }];
+const zRange = (group, names) => {
+  const b = new THREE.Box3();
+  group.children.filter(c => names.includes(c.name)).forEach(c => { c.geometry.computeBoundingBox(); b.union(c.geometry.boundingBox); });
+  return [b.min.z, b.max.z];
+};
+
+test('stamp: separateParts makes the face and base meet exactly, with no overlap between them', { skip }, () => {
+  const fused = buildStamp({ ...baseStamp, font }).group;
+  const split = buildStamp({ ...baseStamp, font, separateParts: true }).group;
+  // single mesh: relief sinks into the base by 0.2 so slicers union them
+  assert.ok(zRange(fused, ['relief'])[1] > 1.5 + 0.1);
+  assert.ok(zRange(fused, ['base'])[0] < 1.5 - 0.1);
+  // two parts: relief ends at 1.5, base starts at 1.5
+  const [rMin, rMax] = zRange(split, ['relief']), [bMin, bMax] = zRange(split, ['base']);
+  assert.ok(Math.abs(rMin) < 1e-6 && Math.abs(rMax - 1.5) < 1e-5, `relief ${rMin}..${rMax}`);
+  assert.ok(Math.abs(bMin - 1.5) < 1e-5 && Math.abs(bMax - 4.5) < 1e-5, `base ${bMin}..${bMax}`);
+  split.children.forEach(assertWatertightMesh);
+  // overall size unchanged
+  assert.ok(Math.abs(new THREE.Box3().setFromObject(split).max.z - 16.5) < 1e-5);
+});
+
+test('stamp: 2-part 3MF has the face in slot 1 and base+handle in slot 2, nothing lost', { skip }, async () => {
+  for (const handle of ['knob', 'bar', 'none'])
+    for (const artMode of ['text', 'logo-above']) {
+      const { group } = buildStamp({ ...baseStamp, font, handle, artMode, logo: artMode === 'text' ? null : logoFixture(), separateParts: true });
+      const blob = export3MF(group, { title: 'Stamp', parts: STAMP_PARTS });
+      const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'st-')), 's.3mf');
+      fs.writeFileSync(file, Buffer.from(await blob.arrayBuffer()));
+      assert.match(execFileSync('unzip', ['-t', file]).toString(), /No errors detected/);
+      const model = execFileSync('unzip', ['-p', file, '3D/3dmodel.model'], { maxBuffer: 1 << 28 }).toString();
+      const cfg = execFileSync('unzip', ['-p', file, 'Metadata/model_settings.config'], { maxBuffer: 1 << 28 }).toString();
+      assert.match(cfg, /value="Stamp face \(artwork\)"\/>\s*<metadata key="extruder" value="1"/);
+      assert.match(cfg, /value="Base and handle"\/>\s*<metadata key="extruder" value="2"/);
+      const objs = [...model.matchAll(/<object id="(\d+)" name="([^"]*)" type="model" pid="1" pindex="(\d)"><mesh>(.*?)<\/mesh>/gs)];
+      assert.equal(objs.length, 2);
+      let total = 0;
+      for (const [, , , , mesh] of objs) {
+        const nv = (mesh.match(/<vertex /g) || []).length;
+        const tr = [...mesh.matchAll(/v1="(\d+)" v2="(\d+)" v3="(\d+)"/g)];
+        assert.ok(tr.length > 0);
+        for (const t of tr) for (const i of t.slice(1)) assert.ok(+i < nv);
+        total += tr.length;
+      }
+      assert.equal(total, collectMesh(group).tris.length / 3, `${handle}/${artMode}: every triangle is in exactly one part`);
+      assert.match(model, /<base name="Stamp face \(artwork\)" displaycolor="#E8743BFF"\/><base name="Base and handle" displaycolor="#B9C0C9FF"\/>/);
+    }
+});
+
+test('stamp: the plain 3MF is still a single mesh with no parts', { skip }, async () => {
+  const { group } = buildStamp({ ...baseStamp, font });
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'st-')), 's.3mf');
+  fs.writeFileSync(file, Buffer.from(await export3MF(group, { title: 'Stamp' }).arrayBuffer()));
+  assert.doesNotMatch(execFileSync('unzip', ['-p', file, '3D/3dmodel.model'], { maxBuffer: 1 << 28 }).toString(), /components|basematerials/);
 });

@@ -49,8 +49,9 @@ const RELS = '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http
 /**
  * @param {object} opts
  *  title
- *  parts  optional multi-colour split: [{ name, label }] in filament-slot order (first = slot 1). Meshes are
- *         grouped by `mesh.name`; each group becomes its own 3MF part, coloured from its material.
+ *  parts  optional multi-colour split: [{ name, label, names? }] in filament-slot order (first = slot 1). Meshes are
+ *         grouped by `mesh.name` (or any of `names`, to merge several meshes into one part); each group becomes its
+ *         own 3MF part, coloured from the material of its first mesh.
  *
  * Multi-colour is written the way Bambu Studio / OrcaSlicer / PrusaSlicer-family slicers need it: one parent
  * object made of one mesh object per part, plus Metadata/model_settings.config assigning each part to a
@@ -76,8 +77,9 @@ export function export3MF(object, { title = 'model', parts = null } = {}) {
 <build><item objectid="1"/></build>
 </model>`;
   } else {
-    const colorOf = name => {
-      const t = triName.indexOf(name);
+    const namesOf = part => part.names || [part.name];
+    const colorOf = part => {
+      const t = triName.findIndex(n => namesOf(part).includes(n));
       return t < 0 ? '#808080' : palette[triMat[t]] || '#808080';
     };
     const k = parts.length;
@@ -88,7 +90,7 @@ export function export3MF(object, { title = 'model', parts = null } = {}) {
       // this part's triangles, with vertices re-indexed to a compact local list
       const local = new Map(), ids = [], tri = [];
       for (let t = 0; t < tris.length / 3; t++) {
-        if (triName[t] !== part.name) continue;
+        if (!namesOf(part).includes(triName[t])) continue;
         const idx = [0, 1, 2].map(j => {
           const g = tris[t * 3 + j];
           if (!local.has(g)) { local.set(g, ids.length); ids.push(g); }
@@ -99,7 +101,7 @@ export function export3MF(object, { title = 'model', parts = null } = {}) {
       objects += `<object id="${firstPart + pi}" name="${esc(part.label || part.name)}" type="model" pid="${BASE_ID}" pindex="${pi}"><mesh><vertices>${vertexXml(ids)}</vertices><triangles>${tri.join('')}</triangles></mesh></object>\n`;
       settings += `    <part id="${firstPart + pi}" subtype="normal_part">\n      <metadata key="name" value="${esc(part.label || part.name)}"/>\n      <metadata key="extruder" value="${pi + 1}"/>\n    </part>\n`;
     });
-    const colors = parts.map(p => colorOf(p.name));
+    const colors = parts.map(colorOf);
     model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" ${NS} xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">
 <metadata name="Title">${esc(title)}</metadata>
