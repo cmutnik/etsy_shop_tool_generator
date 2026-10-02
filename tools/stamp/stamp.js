@@ -49,8 +49,9 @@ function updateLogo() {
   if (!logoSource) { logo = null; return; }
   try {
     logo = logoSource.kind === 'svg'
-      ? svgToGroups(logoSource.text, { ignoreWhite: $('ignoreWhite').checked })
+      ? svgToGroups(logoSource.text, { ignoreWhite: $('ignoreWhite').checked, frame: $('logoFrame').checked })
       : imageToGroups(logoSource.image, {
+        frame: $('logoFrame').checked,
         source: $('source').value,
         threshold: $('autoThreshold').checked ? 'auto' : num('threshold'),
         smooth: num('smooth'),
@@ -90,7 +91,8 @@ async function takeHandoff() {
   try { raw = sessionStorage.getItem('etsytools.handoff'); sessionStorage.removeItem('etsytools.handoff'); } catch { /* storage blocked */ }
   if (!raw) return;
   try {
-    const { name, type, dataUrl } = JSON.parse(raw);
+    const { name, type, dataUrl, frame } = JSON.parse(raw);
+    $('logoFrame').checked = !!frame;
     const blob = await (await fetch(dataUrl)).blob();
     $('artMode').value = 'logo';
     await setLogoFile(new File([blob], name, { type }));
@@ -178,7 +180,7 @@ function doBuild() {
   $('download').disabled = $('download3mf').disabled = $('download3mfParts').disabled = empty;
 }
 
-const LOGO_OPTS = ['threshold', 'autoThreshold', 'invert', 'source', 'smooth', 'specks', 'ignoreWhite'];
+const LOGO_OPTS = ['threshold', 'autoThreshold', 'invert', 'source', 'smooth', 'specks', 'ignoreWhite', 'logoFrame'];
 $('controls').addEventListener('input', e => rebuild(LOGO_OPTS.includes(e.target.id)));
 $('controls').addEventListener('change', e => rebuild(LOGO_OPTS.includes(e.target.id)));
 

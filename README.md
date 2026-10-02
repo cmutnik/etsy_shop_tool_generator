@@ -20,8 +20,10 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 ### Image Prep
 
 - **Black & white:** threshold (auto/manual), adaptive (for shadows and uneven light) or dither (halftone), with auto contrast, smoothing, invert, speck removal, margin trimming and a transparent-background option. Downloads as PNG.
-- **Line art (SVG):** trace shapes (logos, drawings) or outline edges (turn a photo into a line drawing). Downloads as SVG.
-- **One click to the stamp generator:** sends the result over as the stamp's logo.
+- **Line art (SVG):** trace shapes (logos, drawings), outline edges (turn a photo into a line drawing), or **centre line** (pen strokes and handwriting redrawn at one even thickness, as filled shapes or editable strokes).
+- **Colours:** posterize to 2-8 colours and get one layer per ink colour for **multi-colour stamps**. Every layer shares one frame, so the stamps line up; download layers as SVG, all of them as a ZIP, or send one to the stamp generator.
+- **Cut-out and background removal:** remove a plain, gradient or evenly lit background (auto colour, or click to pick), keep same-coloured areas inside the subject, soften or shrink the edge. Download a transparent PNG, or use it as the first step for any other output.
+- **One click to the stamp generator:** sends the result over as the stamp's logo ("Keep the picture's frame" keeps colour layers registered).
 - Runs offline in the browser with no external libraries; the picture never leaves your computer.
 
 ### QR Code Keychain

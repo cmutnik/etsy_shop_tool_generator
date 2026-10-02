@@ -31,3 +31,24 @@ test('svg: y axis is flipped (SVG down -> model up)', () => {
   const cy = circle.outer.reduce((s, p) => s + p[1], 0) / circle.outer.length;
   assert.ok(cy < 0, 'circle is at the bottom of the SVG so should have negative y'); // 80 > 50 in SVG space
 });
+
+test('svg frame: layers keep their positions relative to the picture, not to their own ink', () => {
+  const layer = (x, y) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 60" width="100" height="60"><path fill="#000" d="M${x} ${y}h10v10h-10z"/></svg>`;
+  const left = svgToGroups(layer(10, 40), { frame: true }), right = svgToGroups(layer(80, 5), { frame: true });
+  for (const r of [left, right]) { assert.equal(r.width, 100); assert.equal(r.height, 60); assert.equal(r.framed, true); }
+  const centre = g => { const o = g.groups[0].outer; return [o.reduce((s, p) => s + p[0], 0) / o.length, o.reduce((s, p) => s + p[1], 0) / o.length]; };
+  const [lx, ly] = centre(left), [rx, ry] = centre(right);
+  assert.ok(Math.abs(rx - lx - 70) < 1e-6, `horizontal offset ${rx - lx} should be 70`);
+  assert.ok(Math.abs((ry - ly) - 35) < 1e-6, `vertical: ${ry - ly}`);                  // the left dot is 35 lower on the page, so 35 lower once y points up
+  assert.ok(Math.abs(lx - (15 - 50)) < 1e-6 && Math.abs(ly - (-(45) + 30)) < 1e-6, `left dot centre ${lx},${ly}`);
+  // without frame both dots are centred on the origin and the offset is lost
+  const a = svgToGroups(layer(10, 40)), b = svgToGroups(layer(80, 5));
+  assert.ok(Math.abs(centre(a)[0]) < 1e-6 && Math.abs(centre(b)[0]) < 1e-6);
+  assert.equal(a.framed, false);
+});
+
+test('svg frame: falls back to the ink box when the SVG has no frame', () => {
+  const r = svgToGroups('<svg xmlns="http://www.w3.org/2000/svg"><path fill="#000" d="M5 5h10v10h-10z"/></svg>', { frame: true });
+  assert.equal(r.framed, false);
+  assert.ok(Math.abs(r.width - 10) < 1e-6);
+});

@@ -247,7 +247,7 @@ function densify(ring, maxSeg) {
  * @param {object} o
  *  tolerance (px, outline simplification), minArea (px^2, drop specks), smooth (round the corners slightly with
  *  quadratic curves), color (fill), background (CSS colour or null for transparent), scale (output size multiplier)
- * @returns {{ svg: string, shapes: number, nodes: number }}
+ * @returns {{ svg: string, shapes: number, nodes: number, d: string }}  `d` is the path data, so several layers can be combined
  */
 export function maskToSvg(mask, w, h, { tolerance = 0.7, minArea = 6, smooth = false, color = '#000000', background = null, scale = 1 } = {}) {
   const rings = traceMask(mask, w, h)
@@ -267,5 +267,5 @@ export function maskToSvg(mask, w, h, { tolerance = 0.7, minArea = 6, smooth = f
   }
   const bg = background ? `<rect width="${w}" height="${h}" fill="${background}"/>` : '';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${fmt(w * scale)}" height="${fmt(h * scale)}">${bg}<path fill="${color}" fill-rule="evenodd" d="${d}"/></svg>`;
-  return { svg, shapes: rings.length, nodes };
+  return { svg, shapes: rings.length, nodes, d };
 }

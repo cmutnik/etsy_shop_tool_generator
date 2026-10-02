@@ -9,7 +9,7 @@
   {
     "id": "image-prep",
     "title": "Image Prep",
-    "description": "Turn pictures into black and white, or into SVG line art, ready for stamps and other tools.",
+    "description": "Black & white, SVG line art (trace, edges, centre line), background removal and colour layers for multi-colour stamps.",
     "path": "image-prep/",
     "status": "live"
   },

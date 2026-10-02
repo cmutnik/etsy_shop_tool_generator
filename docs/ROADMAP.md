@@ -2,7 +2,7 @@
 # Roadmap
 
 ## Done
-- **Image Prep** (`tools/image-prep/`): black & white (threshold / adaptive / dither), SVG line art (trace / edges), hand-off to the stamp generator.
+- **Image Prep** (`tools/image-prep/`): black & white (threshold / adaptive / dither), SVG line art (trace / edges / centre line), background removal and cut-out, colour posterize into registered layers for multi-colour stamps, hand-off to the stamp generator (with a "keep the picture's frame" option).
 - **3D Stamp Generator** (`tools/stamp/`): text, SVG/PNG/JPG logo, border, STL + 3MF export.
 - **QR Code Keychain** (`tools/qr-keychain/`): QR plate + loop, raised/engraved, scan check, STL + colour 3MF. Ported from `invite2svg/`; the Python page can be removed once you are happy with it.
 
@@ -31,7 +31,8 @@ Suggested order: ~~QR keychain~~ -> QR stand (reuse `qr-plate.js`; add banner vi
 Remove each `invite2svg/` page once its replacement ships.
 
 ## Ideas
-- Image Prep: background removal, colour-count posterize (for multi-colour stamps), centre-line tracing for pen-like strokes, presets ("logo", "photo", "handwriting"), and a hand-off to the QR keychain/stand banners.
+- Image Prep: presets ("logo", "photo", "handwriting"), registration marks / alignment keys on the layers and the matching stamp bases, ML-based background removal for busy scenes, Bezier curve fitting for the traced SVGs, and a hand-off to the QR keychain/stand banners.
+- Stamp: print all colour layers as one multi-part 3MF with an alignment frame.
 - STL / 3MF modifier: load a mesh (Three.js `STLLoader` / `3MFLoader`), scale, add a text label or hanging hole, re-export.
 - Stamp: curved/circular text for round seals, multiple-colour 3MF (separate relief/base objects), saved presets.
 - Shop-owner extras: batch export (one STL per line of a CSV, zipped - `zipStore()` in `shared/js/export.js` is reusable).

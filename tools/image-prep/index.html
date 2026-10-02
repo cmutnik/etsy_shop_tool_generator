@@ -34,17 +34,39 @@
 
       <fieldset>
         <legend>Output</legend>
-        <div class="seg" role="group" aria-label="Output type">
-          <button type="button" data-out="png" class="active">Black &amp; white image</button>
+        <div class="seg seg4" role="group" aria-label="Output type">
+          <button type="button" data-out="png" class="active">Black &amp; white</button>
           <button type="button" data-out="svg">Line art (SVG)</button>
+          <button type="button" data-out="colors">Colours</button>
+          <button type="button" data-out="cutout">Cut-out</button>
         </div>
         <div id="svgStyle">
           <label>Line art style
             <select id="lineStyle">
               <option value="trace">Trace shapes - logos, silhouettes, drawings</option>
               <option value="edges">Outline edges - turn a photo into a line drawing</option>
+              <option value="centerline">Centre line - pen strokes, handwriting, line drawings</option>
             </select>
           </label>
+        </div>
+      </fieldset>
+
+      <fieldset id="bgBox">
+        <legend>Background</legend>
+        <label class="inline" id="bgRemoveRow"><input type="checkbox" id="bgRemove"> Remove the background first</label>
+        <div id="bgOptions">
+          <label>Background colour
+            <select id="bgMode"><option value="auto">Auto - the colour along the picture's edge</option><option value="pick">Pick a colour</option></select>
+          </label>
+          <label id="bgColorRow">Colour <input type="color" id="bgColor" value="#ffffff"> <small class="muted-inline">or click the original picture</small></label>
+          <label>Tolerance <input type="range" id="bgTolerance" value="25" min="3" max="80" step="1"></label>
+          <label class="inline"><input type="checkbox" id="bgContiguous" checked> Only remove background connected to the edge <small class="muted-inline">(keeps same-coloured areas inside the subject)</small></label>
+          <label class="inline"><input type="checkbox" id="bgGradient" checked> Follow gradients and soft shadows <small class="muted-inline">(a sharp outline still stops it)</small></label>
+          <div class="row">
+            <label>Soft edge (px) <input type="number" id="bgFeather" value="1" min="0" max="8" step="1"></label>
+            <label>Shrink edge (px) <input type="number" id="bgShrink" value="0" min="0" max="6" step="1"></label>
+          </div>
+          <small class="muted" id="bgInfo"></small>
         </div>
       </fieldset>
 
@@ -93,6 +115,30 @@
         <small class="muted">Smoothing hides texture and noise; more detail finds fainter lines.</small>
       </fieldset>
 
+      <fieldset id="centerBox">
+        <legend>Centre line</legend>
+        <div class="row">
+          <label>Line thickness (px) <input type="number" id="clWidth" value="4" min="1" max="30" step="1"></label>
+          <label>Ignore short branches (px) <input type="number" id="clPrune" value="8" min="0" max="60" step="1"></label>
+        </div>
+        <label>Result
+          <select id="clOutput">
+            <option value="filled">Filled shapes - works in the stamp generator</option>
+            <option value="strokes">Strokes - editable lines in a vector editor</option>
+          </select>
+        </label>
+        <small class="muted">Every stroke is reduced to its middle and redrawn at one thickness, so the line work is even and prints well. Free ends shorten by about half the original stroke width.</small>
+      </fieldset>
+
+      <fieldset id="colorsBox">
+        <legend>Colours</legend>
+        <label>Number of colours <span id="nColorsValue" class="muted-inline">4</span> <input type="range" id="nColors" value="4" min="2" max="8" step="1"></label>
+        <label>Smoothing <input type="range" id="posterSmooth" value="1" min="0" max="3" step="1"></label>
+        <label>Paper colour <small class="muted-inline">(not printed - click a swatch to change, click again for none)</small></label>
+        <div id="palette" class="palette"></div>
+        <small class="muted">Each remaining colour becomes its own layer. All layers share one frame, so stamps made from them line up.</small>
+      </fieldset>
+
       <fieldset id="svgBox">
         <legend>SVG</legend>
         <label class="inline"><input type="checkbox" id="smoothCurves" checked> Smooth curves</label>
@@ -116,6 +162,8 @@
 
       <button id="downloadPng" class="primary">Download PNG</button>
       <button id="downloadSvg" class="primary">Download SVG</button>
+      <button id="downloadZip" class="primary">Download all layers (ZIP)</button>
+      <div class="row" id="colorExtras"><button id="downloadCombined" class="primary secondary" type="button">Combined SVG</button><button id="downloadPreview" class="primary secondary" type="button">Preview PNG</button></div>
       <button id="toStamp" class="primary secondary" style="margin-top:8px">Use in the 3D stamp generator</button>
       <div id="error" class="error" hidden></div>
     </section>
@@ -132,6 +180,7 @@
           <div class="frame checker"><canvas id="resultPng"></canvas><img id="resultSvg" alt="Line art result"></div>
         </figure>
       </div>
+      <div id="layersBox" class="layers-box"><h3>Layers <small>one stamp per ink colour</small></h3><div id="layers" class="layers"></div></div>
       <div id="info" class="info"></div>
       <details class="tips" open>
         <summary>Which setting should I use?</summary>
@@ -139,6 +188,9 @@
           <li><b>Logo or drawing on a plain background:</b> Black &amp; white with <b>Threshold</b> (auto). For a vector you can scale, choose Line art with <b>Trace shapes</b>.</li>
           <li><b>Phone photo of a drawing or page (shadows, uneven light):</b> <b>Adaptive</b>, with a local area about a tenth of the picture's width.</li>
           <li><b>Photo to line drawing:</b> Line art with <b>Outline edges</b>. Raise smoothing to ignore texture, raise detail for fainter lines, and thicken the line so it prints.</li>
+          <li><b>Remove the background:</b> Auto reads the colour along the picture's edge. Raise the tolerance for shadows or gradients, shrink the edge to lose a fringe, and leave "only connected to the edge" on so white eyes or highlights inside the subject survive. It works best on plain or evenly lit backgrounds, not busy scenes.</li>
+          <li><b>Multi-colour stamps:</b> choose Colours. You get one layer per ink colour, all on the same frame. Send each layer to the stamp generator (it keeps the frame), use the same stamp size every time, and print one stamp per ink. Keep the stamps' outer shape identical so they register by their edges.</li>
+          <li><b>Pen strokes and handwriting:</b> Line art with Centre line gives one even thickness everywhere, which is what a printer wants.</li>
           <li><b>Shaded picture as dots:</b> <b>Dither</b> (PNG only).</li>
           <li><b>Stamps and 3D printing:</b> keep shapes bold. Thin lines under about 0.6 mm at print size will not print, so thicken lines or remove specks here, then use the button to send it to the stamp generator.</li>
           <li>Everything runs in your browser; the picture is never uploaded.</li>

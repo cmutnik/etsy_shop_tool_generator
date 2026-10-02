@@ -13,3 +13,22 @@
 .frame canvas, .frame img { display: block; max-width: 100%; max-height: 520px; width: auto; height: auto; }
 .placeholder { position: absolute; margin: 0; color: var(--muted); text-align: center; padding: 0 12px; }
 #drop.over .frame { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.seg4 { flex-wrap: wrap; }
+.seg4 button { flex: 1 1 45%; margin-left: 0 !important; border-radius: 0 !important; margin-top: -1px; }
+.seg4 button:nth-child(1) { border-radius: 6px 0 0 0 !important; } .seg4 button:nth-child(2) { border-radius: 0 6px 0 0 !important; }
+.seg4 button:nth-child(3) { border-radius: 0 0 0 6px !important; } .seg4 button:nth-child(4) { border-radius: 0 0 6px 0 !important; }
+.palette { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.swatch { width: 34px; height: 34px; border-radius: 6px; border: 2px solid var(--line); padding: 0; cursor: pointer; }
+.swatch.paper { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset, 0 0 0 1px #fff inset; position: relative; }
+.swatch.paper::after { content: 'paper'; position: absolute; left: 0; right: 0; bottom: -17px; font-size: 10px; color: var(--accent-dark); text-align: center; }
+#palette { margin-bottom: 20px; }
+.layers-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px 12px; margin-bottom: 14px; }
+.layers-box h3 { margin: 6px 0 8px; font-size: 15px; }
+.layers-box h3 small { color: var(--muted); font-weight: normal; margin-left: 6px; }
+.layer { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); }
+.layer:first-child { border-top: 0; }
+.layer .chip { width: 26px; height: 26px; border-radius: 5px; border: 1px solid var(--line); flex: none; }
+.layer .name { flex: 1; font-size: 14px; } .layer .name small { color: var(--muted); }
+.layer button { padding: 4px 10px; font-size: 13px; }
+.frame.cutout { background: repeating-conic-gradient(#ddd 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
+#original.pickable { cursor: crosshair; }

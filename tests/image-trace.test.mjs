@@ -45,3 +45,16 @@ test('imageToGroups: transparent pixels count as paper', () => {
   const { groups } = imageToGroups({ data, width: 20, height: 20 });
   assert.equal(groups.length, 1);
 });
+
+test('imageToGroups frame: two layers cut from one picture keep their relative positions', () => {
+  const w = 60, h = 40;
+  const pic = (x0, y0) => { const data = new Uint8ClampedArray(w * h * 4).fill(255); for (let y = y0; y < y0 + 8; y++) for (let x = x0; x < x0 + 8; x++) data.fill(0, (y * w + x) * 4, (y * w + x) * 4 + 3); return { data, width: w, height: h }; };
+  const A = imageToGroups(pic(5, 25), { frame: true }), B = imageToGroups(pic(45, 5), { frame: true });
+  const cx = g => { const o = g.groups[0].outer; return [o.reduce((s, p) => s + p[0], 0) / o.length, o.reduce((s, p) => s + p[1], 0) / o.length]; };
+  assert.equal(A.width, 60); assert.equal(A.height, 40); assert.equal(A.framed, true);
+  const [ax, ay] = cx(A), [bx, by] = cx(B);
+  assert.ok(Math.abs(bx - ax - 40) < 0.01 && Math.abs(by - ay - 20) < 0.01, `offset ${bx - ax}, ${by - ay}`);   // B is 40 to the right and 20 higher (y points up)
+  // the first square (pixels 5..12 x 25..32) sits left of and below the picture's centre
+  assert.ok(ax < 0 && ay < 0);
+  assert.equal(imageToGroups(pic(5, 25)).framed, false);
+});

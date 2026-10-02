@@ -1,6 +1,6 @@
 // Copyright (c) 2025 cmutnik
 // Raster -> groups: threshold to a mask, trace with marching squares, simplify.
-import { contoursToGroups, centerGroups, signedArea, simplifyRing } from './geometry-pure.js';
+import { contoursToGroups, centerGroups, mapGroups, signedArea, simplifyRing } from './geometry-pure.js';
 
 // Corner bits: TL=8 TR=4 BR=2 BL=1. Each entry is [from, to] edge-midpoint pairs, oriented with
 // "ink" on the right-hand side in y-down image coordinates (T/R/B/L = edge of the cell).
@@ -130,14 +130,21 @@ export function buildMask(img, { source = 'auto', threshold = 'auto', smooth = 0
  * Raster -> groups (y-up, centred, units = source pixels). Options as buildMask plus
  *  tolerance  outline simplification in px (higher = smoother, fewer points)
  *  minArea    drop specks smaller than this many px^2
+ *  frame      position and size by the whole picture (width x height) instead of the ink's bounding box, so several
+ *             layers cut from one picture keep their relative positions (see svgToGroups)
  * Returns { groups, width, height, threshold, source }.
  */
-export function imageToGroups(img, { tolerance = 0.7, minArea = 6, ...maskOpts } = {}) {
+export function imageToGroups(img, { tolerance = 0.7, minArea = 6, frame = false, ...maskOpts } = {}) {
   const { mask, width: w, height: h, threshold, source } = buildMask(img, maskOpts);
   const rings = traceMask(mask, w, h)
     .filter(r => Math.abs(signedArea(r)) >= minArea)
     .map(r => simplifyRing(r, tolerance).map(([x, y]) => [x, -y])); // flip to y-up
-  return { ...centerGroups(contoursToGroups(rings)), threshold, source };
+  if (frame) {
+    // the picture spans [-0.5, w-0.5] x [-0.5, h-0.5] in pixel-centre units; after the y flip its centre is ((w-1)/2, -(h-1)/2)
+    const groups = mapGroups(contoursToGroups(rings), (x, y) => [x - (w - 1) / 2, y + (h - 1) / 2]);
+    return { groups, width: w, height: h, threshold, source, framed: true };
+  }
+  return { ...centerGroups(contoursToGroups(rings)), threshold, source, framed: false };
 }
 
 /** Browser only: decode an image File to RGBA pixels, downscaled so the long side <= maxSize. */
