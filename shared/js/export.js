@@ -2,6 +2,9 @@
 // Mesh export: binary STL and 3MF (a zip of XML). Meshes are exported in the object's own coordinates,
 // so a tool's model should already be oriented the way it should print (z up, on the bed at z = 0).
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { downloadBlob } from './download.js';
+
+export { downloadBlob }; // re-exported so existing imports keep working
 
 export function exportSTL(object) {
   const data = new STLExporter().parse(object, { binary: true });
@@ -164,8 +167,3 @@ export function zipStore(files) {
   return out;
 }
 
-export function downloadBlob(blob, filename) {
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: filename });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}

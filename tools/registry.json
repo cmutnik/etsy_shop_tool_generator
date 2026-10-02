@@ -7,6 +7,13 @@
     "status": "live"
   },
   {
+    "id": "image-prep",
+    "title": "Image Prep",
+    "description": "Turn pictures into black and white, or into SVG line art, ready for stamps and other tools.",
+    "path": "image-prep/",
+    "status": "live"
+  },
+  {
     "id": "qr-stand",
     "title": "QR Code Stand",
     "description": "Embossed QR plate plus a slotted base, with optional icon and title banner.",

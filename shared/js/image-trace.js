@@ -1,6 +1,6 @@
 // Copyright (c) 2025 cmutnik
 // Raster -> groups: threshold to a mask, trace with marching squares, simplify.
-import { contoursToGroups, centerGroups, signedArea, simplifyRing } from './geometry2d.js';
+import { contoursToGroups, centerGroups, signedArea, simplifyRing } from './geometry-pure.js';
 
 // Corner bits: TL=8 TR=4 BR=2 BL=1. Each entry is [from, to] edge-midpoint pairs, oriented with
 // "ink" on the right-hand side in y-down image coordinates (T/R/B/L = edge of the cell).
@@ -64,7 +64,7 @@ export function otsuThreshold(gray) {
   return thr;
 }
 
-function boxBlur(src, w, h, r) {
+export function boxBlur(src, w, h, r) {
   if (r < 1) return src;
   const tmp = new Float32Array(w * h), out = new Float32Array(w * h), n = 2 * r + 1;
   for (let y = 0; y < h; y++) {
@@ -87,29 +87,39 @@ function boxBlur(src, w, h, r) {
 }
 
 /**
- * Turn RGBA pixels into an ink mask (1 = raised).
- * @param {{ data: Uint8ClampedArray, width: number, height: number }} img
- * @param {object} o
- *  source    'auto' | 'brightness' | 'alpha'. Auto uses transparency when the image has any, else brightness.
- *            (alpha: opaque = ink - right for transparent logos whose colours are light; brightness: dark = ink.)
- *  threshold 'auto' (Otsu) or 0-255 - pixels darker than this become ink
- *  smooth    box-blur radius in px applied before thresholding (softens jagged/noisy edges)
- *  invert    swap ink and paper
- * @returns {{ mask: Uint8Array, width, height, threshold: number, source: string }}
+ * Brightness values (0 = black, 255 = white) from RGBA pixels, plus which source was used.
+ * source 'auto' | 'brightness' | 'alpha' as in buildMask.
  */
-export function buildMask(img, { source = 'auto', threshold = 'auto', smooth = 0, invert = false } = {}) {
+export function grayFromImage(img, source = 'auto') {
   const { data, width: w, height: h } = img;
   const n = w * h;
   let transparent = 0;
   for (let p = 0; p < n; p++) if (data[p * 4 + 3] < 128) transparent++;
   const src = source === 'auto' ? (transparent / n > 0.01 ? 'alpha' : 'brightness') : source;
-  let gray = new Float32Array(n);
+  const gray = new Float32Array(n);
   for (let p = 0; p < n; p++) {
     const a = data[p * 4 + 3] / 255;
     if (src === 'alpha') gray[p] = 255 * (1 - a);
     else gray[p] = (0.2126 * data[p * 4] + 0.7152 * data[p * 4 + 1] + 0.0722 * data[p * 4 + 2]) * a + 255 * (1 - a);
   }
-  gray = boxBlur(gray, w, h, Math.round(smooth));
+  return { gray, source: src };
+}
+
+/**
+ * Turn RGBA pixels into an ink mask (1 = raised).
+ * @param {{ data: Uint8ClampedArray, width: number, height: number }} img
+ * @param {object} o
+ *  source    'auto' | 'brightness' | 'alpha'. Auto uses transparency when the image has any, else brightness.
+ *  threshold 'auto' (Otsu) or 0-255 - pixels darker than this become ink
+ *  smooth    box-blur radius in px applied before thresholding
+ *  invert    swap ink and paper
+ * @returns {{ mask: Uint8Array, width, height, threshold: number, source: string }}
+ */
+export function buildMask(img, { source = 'auto', threshold = 'auto', smooth = 0, invert = false } = {}) {
+  const { width: w, height: h } = img;
+  const n = w * h;
+  const { gray: raw, source: src } = grayFromImage(img, source);
+  const gray = boxBlur(raw, w, h, Math.round(smooth));
   const thr = threshold === 'auto' ? (src === 'alpha' ? 128 : otsuThreshold(gray)) : threshold;
   const mask = new Uint8Array(n);
   for (let p = 0; p < n; p++) mask[p] = (gray[p] < thr) !== invert ? 1 : 0;

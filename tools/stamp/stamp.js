@@ -70,8 +70,7 @@ function updateLogo() {
   }
 }
 
-$('logoFile').addEventListener('change', async e => {
-  const file = e.target.files[0];
+async function setLogoFile(file) {
   if (!file) { logoSource = null; rebuild(true); return; }
   statusEl.textContent = 'Reading logo...';
   try {
@@ -82,7 +81,25 @@ $('logoFile').addEventListener('change', async e => {
     statusEl.textContent = 'Could not open that image.';
   }
   rebuild(true);
-});
+}
+$('logoFile').addEventListener('change', e => { $('logoFrom').hidden = true; setLogoFile(e.target.files[0]); });
+
+// A picture sent over from the Image Prep tool (see tools/image-prep): use it as the logo.
+async function takeHandoff() {
+  let raw = null;
+  try { raw = sessionStorage.getItem('etsytools.handoff'); sessionStorage.removeItem('etsytools.handoff'); } catch { /* storage blocked */ }
+  if (!raw) return;
+  try {
+    const { name, type, dataUrl } = JSON.parse(raw);
+    const blob = await (await fetch(dataUrl)).blob();
+    $('artMode').value = 'logo';
+    await setLogoFile(new File([blob], name, { type }));
+    $('logoFrom').textContent = `Using ${name} from Image Prep. Choose a file above to replace it.`;
+    $('logoFrom').hidden = false;
+  } catch {
+    statusEl.textContent = 'Could not use the picture from Image Prep.';
+  }
+}
 
 // ---------- build ----------
 let stamp = null;
@@ -186,3 +203,4 @@ $('download3mfParts').addEventListener('click', () => {
 });
 
 selectFont();
+takeHandoff();
