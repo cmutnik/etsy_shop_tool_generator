@@ -7,7 +7,9 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import * as THREE from 'three';
 import jsQR from 'jsqr';
-import { buildKeychain, loopOutline } from '../tools/qr-keychain/geometry.js';
+import { buildKeychain } from '../tools/qr-keychain/geometry.js';
+import { loopFootprint, loopWall, LOOP_STYLES, HEADER_SHAPES, headerOutline } from '../tools/qr-keychain/loops.js';
+import { signedArea, pointInPoly } from '../shared/js/geometry2d.js';
 import { qrMatrix, gridRects, rasterizeTopDown, rasterizeBottomUp } from '../shared/js/qr-plate.js';
 import { export3MF, collectMesh } from '../shared/js/export.js';
 import { assertWatertight } from './helpers.mjs';
@@ -68,14 +70,83 @@ test('all parts are watertight, sit on the bed, and the hole is open', () => {
       }
 });
 
-test('the loop outline is a closed simple shape clockwise-over-the-top with the neck inside the circle', () => {
-  for (const neckWidth of [4, 10, 15.9, 16, 20]) {
-    const { pts } = loopOutline({ loopDiameter: 16, neckWidth, neckHeight: 2 });
-    const ys = pts.map(p => p[1]), xs = pts.map(p => p[0]);
-    assert.ok(Math.abs(Math.max(...ys) - (2 + 16)) < 1e-6, `top ${Math.max(...ys)} @${neckWidth}`);
-    assert.ok(Math.abs(Math.min(...ys) + 0.2) < 1e-9);
-    assert.ok(Math.max(...xs) <= Math.max(8, neckWidth / 2) + 1e-9);
+const STYLE_OPTS = { size: 16, holeDiameter: 5.5, slotLength: 14, neckWidth: 10, neckHeight: 2, plateWidth: 38 };
+const inside = (g, pt) => pointInPoly(pt, g.outer) && !g.holes.some(h => pointInPoly(pt, h));
+
+test('every loop style: one solid piece with one open hole, reaching the expected height', () => {
+  const expectedHeight = { round: 18, 'rounded-square': 18, hexagon: 2 + Math.sqrt(3) * 8, teardrop: 2 + 8 + 16, 'lanyard-slot': 18, header: 16 };
+  for (const { id } of LOOP_STYLES)
+    for (const neckWidth of [4, 10, 20])
+      for (const sign of [1, -1]) {
+        const fp = loopFootprint({ ...STYLE_OPTS, style: id, neckWidth, sign });
+        assert.equal(fp.groups.length, 1, `${id} @${neckWidth}: one piece`);
+        const g = fp.groups[0];
+        assert.equal(g.holes.length, 1, `${id}: one hole`);
+        // the hole is genuinely empty (the neck did not fill it) and the material around it is solid
+        assert.ok(!inside(g, fp.holeCentre), `${id} @${neckWidth}: hole centre must be open`);
+        const [hx, hy] = fp.holeCentre;
+        assert.ok(inside(g, [hx, hy + sign * (5.5 / 2 + 1)]) || id === 'lanyard-slot', `${id}: material just above the hole`);
+        // the shape starts just inside the plate edge and reaches the expected distance beyond it
+        const ys = g.outer.map(p => p[1] * sign);
+        assert.ok(Math.abs(Math.min(...ys) + 0.2) < 1e-6, `${id}: sunk into the plate by 0.2`);
+        assert.ok(Math.abs(Math.max(...ys) - expectedHeight[id]) < 1e-6, `${id} @${neckWidth}: height ${Math.max(...ys)} vs ${expectedHeight[id]}`);
+        assert.ok(Math.abs(fp.height - expectedHeight[id]) < 1e-6, `${id}: reported height`);
+      }
+});
+
+test('every loop style builds into watertight meshes, scans, and keeps the plate centred', () => {
+  for (const loopStyle of LOOP_STYLES.map(s => s.id))
+    for (const mode of ['raised', 'indented'])
+      for (const loopPosition of ['above', 'below'])
+        for (const neckWidth of [4, 10, 20, 28]) {
+        const r = buildKeychain({ ...base, loopStyle, mode, loopPosition, neckWidth, backDepth: 0 });
+        r.group.children.forEach(m => assertWatertight(m, assert));
+        assert.equal(scan(r, mode), base.data, `${loopStyle}/${mode}/${loopPosition}/${neckWidth}`);
+        const box = new THREE.Box3().setFromObject(r.group);
+        assert.ok(Math.abs(box.min.z) < 1e-6);
+        assert.equal(r.info.loopStyle, loopStyle);
+      }
+});
+
+test('loop styles: footprint dimensions and the hole stay inside the part', () => {
+  const dims = style => { const r = buildKeychain({ ...base, loopStyle: style }); return r.info; };
+  const P = dims('round').plateSize;
+  assert.ok(Math.abs(dims('round').depth - (P + 18)) < 0.02);
+  assert.ok(Math.abs(dims('rounded-square').depth - (P + 18)) < 0.02);
+  assert.ok(Math.abs(dims('hexagon').depth - (P + 2 + Math.sqrt(3) * 8)) < 0.02);
+  assert.ok(Math.abs(dims('teardrop').depth - (P + 26)) < 0.02);
+  assert.ok(Math.abs(dims('header').depth - (P + 16)) < 0.02);
+  assert.ok(Math.abs(dims('header').width - P) < 0.02, 'header is exactly as wide as the plate');
+  // lanyard slot is wider than the round loop but narrower than the plate here
+  assert.ok(dims('lanyard-slot').width <= P + 0.02);
+});
+
+test('lanyard slot: hole is a slot of the requested length and height', () => {
+  const fp = loopFootprint({ ...STYLE_OPTS, style: 'lanyard-slot', slotLength: 20 });
+  const hole = fp.groups[0].holes[0];
+  const xs = hole.map(p => p[0]), ys = hole.map(p => p[1]);
+  assert.ok(Math.abs(Math.max(...xs) - Math.min(...xs) - 20) < 1e-6);
+  assert.ok(Math.abs(Math.max(...ys) - Math.min(...ys) - 5.5) < 1e-6);
+  // same wall all round: outer stadium is 20 + (16 - 5.5) wide
+  const ox = fp.groups[0].outer.map(p => p[0]);
+  assert.ok(Math.abs(Math.max(...ox) - Math.min(...ox) - (20 + 10.5)) < 1e-6);
+});
+
+test('loop wall rule applies to every style', () => {
+  assert.ok(Math.abs(loopWall({ style: 'round', size: 16, holeDiameter: 5.5 }) - 5.25) < 1e-9);
+  assert.ok(Math.abs(loopWall({ style: 'hexagon', size: 16, holeDiameter: 5.5 }) - (Math.sqrt(3) * 4 - 2.75)) < 1e-9);
+  for (const { id } of LOOP_STYLES) {
+    assert.throws(() => buildKeychain({ ...base, loopStyle: id, loopDiameter: 8, holeDiameter: 5.5 }), /at least 2\.5 mm of wall/, id);
+    assert.doesNotThrow(() => buildKeychain({ ...base, loopStyle: id }));
   }
+  assert.throws(() => buildKeychain({ ...base, loopStyle: 'heart' }), /Unknown loop style/);
+});
+
+test('default style is the round ring, unchanged', () => {
+  const a = buildKeychain(base), b = buildKeychain({ ...base, loopStyle: 'round' });
+  assert.equal(a.info.loopStyle, 'round');
+  assert.equal(a.info.triangles, b.info.triangles);
+  assert.ok(Math.abs(a.info.depth - (a.info.plateSize + 18)) < 0.02);
 });
 
 test('invalid input gives readable errors', () => {
@@ -291,4 +362,207 @@ test('back engraving: 3MF keeps plate=slot 1, QR=slot 2 with a back layer', asyn
     assert.match(cfg, /value="Plate"\/>\s*<metadata key="extruder" value="1"/);
     assert.match(cfg, /value="QR code"\/>\s*<metadata key="extruder" value="2"/);
   }
+});
+
+test('every loop style also works with back engraving in both modes', () => {
+  for (const loopStyle of LOOP_STYLES.map(s => s.id))
+    for (const mode of ['raised', 'indented']) {
+      const r = buildKeychain({ ...base, loopStyle, mode, thickness: 4, backDepth: 0.8, loopPosition: 'below' });
+      r.group.children.forEach(m => assertWatertight(m, assert));
+      assert.equal(scan(r, mode), base.data, `${loopStyle}/${mode} front`);
+    }
+});
+
+// ---- full-width header: shapes, rounding, moving the hole ----
+const HDR = { ...STYLE_OPTS, style: 'header', plateWidth: 38, size: 16 };
+const SHAPES = HEADER_SHAPES.map(s => s.id);
+
+test('header shapes: one solid piece with one open hole and the stated height, for every lean and rounding', () => {
+  for (const headerShape of SHAPES)
+    for (const lean of [0, 0.3, 0.6, 1])
+      for (const rounding of [0, 2, 6])
+        for (const sign of [1, -1]) {
+          const fp = loopFootprint({ ...HDR, headerShape, lean, rounding, sign });
+          const tag = `${headerShape} lean ${lean} r ${rounding} sign ${sign}`;
+          assert.equal(fp.groups.length, 1, tag);
+          assert.equal(fp.groups[0].holes.length, 1, tag);
+          assert.ok(!inside(fp.groups[0], fp.holeCentre), `${tag}: hole centre open`);
+          const ys = fp.groups[0].outer.map(p => p[1] * sign), xs = fp.groups[0].outer.map(p => p[0]);
+          const want = headerShape === 'semicircle' ? 19 : 16;       // semicircle: half the plate width; others: the size
+          assert.ok(Math.abs(Math.max(...ys) - want) < 1e-5, `${tag}: top ${Math.max(...ys)} vs ${want}`);
+          assert.ok(Math.abs(Math.min(...ys) + 0.2) < 1e-9, `${tag}: sunk into the plate`);
+          assert.ok(Math.abs(Math.max(...xs) - 19) < 1e-9 && Math.abs(Math.min(...xs) + 19) < 1e-9, `${tag}: as wide as the plate`);
+        }
+});
+
+test('header: the semicircle is a true semicircle and the rectangle rounds only its top corners', () => {
+  const semi = headerOutline({ plateWidth: 38, size: 16, headerShape: 'semicircle' });
+  assert.equal(semi.height, 19);
+  const arc = semi.ring.filter(p => p[1] > 1e-9);
+  assert.ok(arc.length > 50);
+  for (const [x, y] of arc) assert.ok(Math.abs(Math.hypot(x, y) - 19) < 1e-9, 'every arc point is 19 mm from the middle of the plate edge');
+  const rect = headerOutline({ plateWidth: 38, size: 16, headerShape: 'rectangle', rounding: 4 }).ring;
+  assert.ok(rect.some(p => p[0] === -19 && p[1] === -0.2) && rect.some(p => p[0] === 19 && p[1] === -0.2), 'bottom corners stay square');
+  assert.ok(!rect.some(p => Math.abs(p[0]) > 18.99 && p[1] > 15.99), 'top corners are rounded off');
+});
+
+test('header: triangles lean towards the named side, and lean 1 is a right triangle flush with the plate edge', () => {
+  const apexX = fp => { const g = fp.groups[0].outer; const top = Math.max(...g.map(p => p[1])); const pts = g.filter(p => p[1] > top - 0.05); return pts.reduce((a, p) => a + p[0], 0) / pts.length; };
+  for (const lean of [0.3, 0.6, 1]) {
+    const L = apexX(loopFootprint({ ...HDR, headerShape: 'triangle-left', lean, rounding: 3 })), Rr = apexX(loopFootprint({ ...HDR, headerShape: 'triangle-right', lean, rounding: 3 }));
+    assert.ok(L < 0 && Rr > 0 && Math.abs(L + Rr) < 1e-6, `lean ${lean}: left ${L}, right ${Rr}`);
+  }
+  assert.ok(Math.abs(apexX(loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 0, rounding: 3 }))) < 1e-6, 'lean 0 is centred');
+  // more lean = apex further to the side
+  assert.ok(apexX(loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 0.9, rounding: 3 })) > apexX(loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 0.4, rounding: 3 })));
+  // right triangle: one vertical edge exactly at the plate's right edge (all points near x=19 are collinear-free)
+  const tri = loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 1, rounding: 0 }).groups[0].outer;
+  assert.ok(tri.filter(p => Math.abs(p[0] - 19) < 1e-9).some(p => Math.abs(p[1] - 16) < 1e-9), 'apex directly above the right-hand corner');
+});
+
+test('header: rounding rounds the apex (more vertices, smoother) and never exceeds the stated height', () => {
+  for (const headerShape of ['rectangle', 'triangle-left', 'triangle-right']) {
+    const sharp = loopFootprint({ ...HDR, headerShape, rounding: 0 }).groups[0].outer.length;
+    const round = loopFootprint({ ...HDR, headerShape, rounding: 5 }).groups[0].outer.length;
+    assert.ok(round > sharp + 8, `${headerShape}: ${round} vs ${sharp} vertices`);
+  }
+});
+
+test('header: the hole moves exactly by the offsets, and its default spot is comfortable for every shape', () => {
+  for (const headerShape of SHAPES) {
+    const def = loopFootprint({ ...HDR, headerShape });
+    const moved = loopFootprint({ ...HDR, headerShape, holeOffsetX: 1.5, holeOffsetY: 0.5 });
+    assert.ok(Math.abs(moved.holeCentre[0] - def.holeCentre[0] - 1.5) < 1e-9 && Math.abs(moved.holeCentre[1] - def.holeCentre[1] - 0.5) < 1e-9, headerShape);
+    // the cut-out in the footprint really is centred there
+    const ring = moved.groups[0].holes[0];
+    const cx = ring.reduce((a, p) => a + p[0], 0) / ring.length, cy = ring.reduce((a, p) => a + p[1], 0) / ring.length;
+    assert.ok(Math.abs(cx - moved.holeCentre[0]) < 1e-6 && Math.abs(cy - moved.holeCentre[1]) < 1e-6, `${headerShape}: hole ring centre`);
+    assert.ok(inside(moved.groups[0], [moved.holeCentre[0], moved.holeCentre[1] + 5]) || headerShape !== 'rectangle');
+    // below the plate, the hole centre's y is mirrored but x is not
+    const below = loopFootprint({ ...HDR, headerShape, holeOffsetX: 1.5, holeOffsetY: 0.5, sign: -1 });
+    assert.ok(Math.abs(below.holeCentre[0] - moved.holeCentre[0]) < 1e-9 && Math.abs(below.holeCentre[1] + moved.holeCentre[1]) < 1e-9);
+  }
+});
+
+test('header: unreasonable hole positions give clear errors', () => {
+  assert.throws(() => loopFootprint({ ...HDR, holeOffsetY: -6 }), /cut into the plate/);
+  assert.throws(() => loopFootprint({ ...HDR, holeOffsetY: 5 }), /at least 2\.5 mm of wall/);
+  assert.throws(() => loopFootprint({ ...HDR, holeOffsetX: 17 }), /at least 2\.5 mm of wall/);
+  assert.throws(() => loopFootprint({ ...HDR, holeOffsetX: 40 }), /outside the header shape/);       // outside the shape entirely
+  assert.throws(() => loopFootprint({ ...HDR, headerShape: 'triangle-right', lean: 1, holeOffsetX: 12 }), /wall|plate|outside the header/);
+  assert.doesNotThrow(() => loopFootprint({ ...HDR, holeOffsetX: 12 }));
+  assert.throws(() => loopFootprint({ ...HDR, headerShape: 'hexagon' }), /Unknown header shape/);
+});
+
+test('header shapes build into watertight meshes that scan, in every mode, orientation and with back engraving', () => {
+  for (const headerShape of SHAPES)
+    for (const mode of ['raised', 'indented'])
+      for (const loopPosition of ['above', 'below'])
+        for (const backDepth of [0, 0.8]) {
+          const r = buildKeychain({ ...base, thickness: 4, loopStyle: 'header', headerShape, lean: 0.6, rounding: 4, holeOffsetX: 2, mode, loopPosition, backDepth });
+          r.group.children.forEach(m => assertWatertight(m, assert));
+          assert.equal(scan(r, mode), base.data, `${headerShape}/${mode}/${loopPosition}/${backDepth}`);
+          assert.ok(Math.abs(r.info.width - r.info.plateSize) < 0.02, 'header is as wide as the plate');
+          assert.deepEqual(r.info.holeCentre.map(v => +v.toFixed(3)).length, 2);
+        }
+});
+
+test('header: overall size follows the shape', () => {
+  const P = buildKeychain({ ...base, loopStyle: 'header' }).info.plateSize;
+  const depth = headerShape => buildKeychain({ ...base, loopStyle: 'header', headerShape, lean: 0.6, rounding: 4 }).info.depth;
+  assert.ok(Math.abs(depth('rectangle') - (P + 16)) < 0.02);
+  assert.ok(Math.abs(depth('semicircle') - (P + P / 2)) < 0.02);
+  assert.ok(Math.abs(depth('triangle-left') - (P + 16)) < 0.02);
+  assert.ok(Math.abs(depth('triangle-right') - (P + 16)) < 0.02);
+});
+
+// ---- rounded plate corners (the two corners away from the loop) ----
+/** Vertices of the plate meshes (everything except the loop's extruded shapes) in plate coordinates. */
+function plateVertices(r) {
+  const out = [];
+  for (const m of r.meshes) {
+    if (m.userData.loop) continue;
+    const pos = m.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) out.push([pos.getX(i), pos.getY(i), pos.getZ(i)]);
+  }
+  return out;
+}
+
+test('rounded corners: the far corners are cut with an arc concentric with the QR corner; the near corners stay square', () => {
+  const m = base.margin;
+  for (const loopPosition of ['above', 'below'])
+    for (const mode of ['raised', 'indented']) {
+      const plain = buildKeychain({ ...base, mode, loopPosition, loopStyle: 'header' });
+      const round = buildKeychain({ ...base, mode, loopPosition, loopStyle: 'header', roundBottomCorners: true });
+      const P = round.info.plateSize;
+      assert.equal(round.info.roundedCorners, true);
+      assert.equal(plain.info.roundedCorners, false);
+      const farY = loopPosition === 'above' ? 0 : P;                     // the edge away from the loop
+      const nearY = P - farY;
+      const verts = plateVertices(round);
+      const nearCorner = (v, x) => Math.abs(v[0] - x) < 0.02 && Math.abs(v[1] - nearY) < 0.02;
+      const farCorner = (v, x) => Math.abs(v[0] - x) < 0.02 && Math.abs(v[1] - farY) < 0.02;
+      // far corners: no vertex left at the square corner, and every vertex in the corner square lies on/inside the arc
+      for (const x of [0, P]) {
+        assert.ok(!verts.some(v => farCorner(v, x)), `${loopPosition}/${mode}: square far corner at x=${x} should be gone`);
+        assert.ok(verts.some(v => nearCorner(v, x)), `${loopPosition}/${mode}: near corner at x=${x} should stay square`);
+      }
+      const inCorner = v => (v[0] < m || v[0] > P - m) && Math.abs(v[1] - farY) < m - 1e-6;
+      const cx = v => (v[0] < m ? m : P - m), cy = farY === 0 ? m : P - m;
+      for (const v of verts.filter(inCorner)) {
+        const dist = Math.hypot(v[0] - cx(v), v[1] - cy);
+        assert.ok(dist <= m + 0.02, `${loopPosition}/${mode}: vertex (${v[0].toFixed(3)},${v[1].toFixed(3)}) is ${dist.toFixed(3)} from the corner centre (limit ${m})`);
+      }
+      // the arc itself is really there: plenty of vertices at distance == margin from the centre
+      const onArc = verts.filter(v => inCorner(v) && Math.abs(Math.hypot(v[0] - cx(v), v[1] - cy) - m) < 1e-6);
+      assert.ok(onArc.length >= 20, `${loopPosition}/${mode}: ${onArc.length} arc vertices`);
+      // overall size is unchanged (the plain boxes are inflated 5 microns past the plate, the rounded strips are not)
+      assert.ok(Math.abs(round.info.width - plain.info.width) < 0.02 && Math.abs(round.info.depth - plain.info.depth) < 0.02);
+    }
+});
+
+test('rounded corners: plate area is exactly the square minus two quarter-circle corners', () => {
+  const r = buildKeychain({ ...base, loopStyle: 'header', roundBottomCorners: true });
+  const P = r.info.plateSize, m = base.margin;
+  const slab = r.meshes.find(x => x.name === 'base' && x.geometry.type === 'ExtrudeGeometry' && !x.userData.back);
+  const pos = slab.geometry.attributes.position, idx = slab.geometry.index;
+  let vol = 0;
+  const n = idx ? idx.count : pos.count, at = i => (idx ? idx.getX(i) : i);
+  for (let t = 0; t < n; t += 3) {
+    const p = [0, 1, 2].map(j => { const i = at(t + j); return [pos.getX(i), pos.getY(i), pos.getZ(i)]; });
+    vol += (p[0][0] * (p[1][1] * p[2][2] - p[1][2] * p[2][1]) - p[0][1] * (p[1][0] * p[2][2] - p[1][2] * p[2][0]) + p[0][2] * (p[1][0] * p[2][1] - p[1][1] * p[2][0])) / 6;
+  }
+  const expected = (P * P - 2 * (1 - Math.PI / 4) * m * m) * base.thickness;
+  assert.ok(Math.abs(vol - expected) / expected < 1e-3, `slab volume ${vol} vs ${expected}`);
+});
+
+test('rounded corners: every style, mode, loop position and back engraving stays watertight and scannable', () => {
+  for (const loopStyle of LOOP_STYLES.map(s => s.id))
+    for (const mode of ['raised', 'indented'])
+      for (const loopPosition of ['above', 'below'])
+        for (const backDepth of [0, 0.8]) {
+          const r = buildKeychain({ ...base, thickness: 4, loopStyle, mode, loopPosition, backDepth, roundBottomCorners: true });
+          r.group.children.forEach(m => assertWatertight(m, assert));
+          const tag = `${loopStyle}/${mode}/${loopPosition}/${backDepth}`;
+          assert.equal(scan(r, mode), base.data, `front ${tag}`);
+          if (backDepth) assert.equal(scanRaster(rasterizeBottomUp(r.meshes, r.info.plateSize, 10)), base.data, `back ${tag}`);
+        }
+});
+
+test('rounded corners: the quiet zone stays margin wide at the rounded corners (arc is concentric with the code)', () => {
+  for (const margin of [1.5, 4, 8]) {
+    const r = buildKeychain({ ...base, margin, loopStyle: 'header', roundBottomCorners: true });
+    const P = r.info.plateSize;
+    // QR's bottom-left module corner is at (margin, margin): its distance to the nearest plate outline vertex in the corner >= margin
+    const near = plateVertices(r).filter(v => v[0] < margin && v[1] < margin && v[2] < 0.01).map(v => Math.hypot(v[0] - margin, v[1] - margin));
+    assert.ok(near.length > 5);
+    assert.ok(Math.min(...near) >= margin - 0.02, `margin ${margin}: closest outline vertex ${Math.min(...near)}`);
+    assert.ok(P > 2 * margin);
+  }
+});
+
+test('rounded corners: off by default, and the geometry is identical when off', () => {
+  const a = buildKeychain({ ...base, loopStyle: 'header' }), b = buildKeychain({ ...base, loopStyle: 'header', roundBottomCorners: false });
+  assert.equal(a.info.triangles, b.info.triangles);
+  assert.equal(a.info.roundedCorners, false);
 });

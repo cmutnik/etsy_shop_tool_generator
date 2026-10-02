@@ -14,7 +14,8 @@
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
       "qrcode-generator": "https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.mjs",
-      "jsqr": "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm"
+      "jsqr": "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm",
+      "polygon-clipping": "https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm"
     }
   }
   </script>
@@ -58,6 +59,8 @@
           <label>Plate thickness (mm) <input type="number" id="thickness" value="3" min="2" max="6" step="0.5"></label>
           <label>Emboss / engrave depth (mm) <input type="number" id="depth" value="0.6" min="0.2" max="1.5" step="0.1"></label>
         </div>
+        <label class="inline"><input type="checkbox" id="roundCorners"> Round the bottom corners of the plate</label>
+        <small class="muted" id="roundNote">Rounds the two plate corners farthest from the loop. The curve is as wide as the quiet zone and centred on the code's corner, so the quiet zone stays the same width there.</small>
         <label class="inline"><input type="checkbox" id="backEngrave"> Also engrave the QR on the back</label>
         <div class="row" id="backRow">
           <label>Back engrave depth (mm) <input type="number" id="backDepth" value="0.8" min="0.4" max="2" step="0.2"></label>
@@ -72,17 +75,38 @@
 
       <fieldset>
         <legend>Keyring loop</legend>
+        <label>Loop style
+          <select id="loopStyle"></select>
+        </label>
         <div class="row">
           <label>Loop position
             <select id="loopPosition"><option value="above">Above the code</option><option value="below">Below the code</option></select>
           </label>
-          <label>Loop diameter (mm) <input type="number" id="loopDiameter" value="16" min="10" max="25" step="0.5"></label>
+          <label><span id="loopSizeLabel">Loop size (mm)</span> <input type="number" id="loopDiameter" value="16" min="10" max="25" step="0.5"></label>
         </div>
         <div class="row">
-          <label>Split-ring hole (mm) <input type="number" id="holeDiameter" value="5.5" min="3" max="12" step="0.5"></label>
-          <label>Neck width (mm) <input type="number" id="neckWidth" value="10" min="4" max="20" step="1"></label>
+          <label>Hole diameter (mm) <input type="number" id="holeDiameter" value="5.5" min="3" max="12" step="0.5"></label>
+          <label id="slotRow">Slot length (mm) <input type="number" id="slotLength" value="14" min="6" max="30" step="1"></label>
         </div>
-        <label>Neck height (mm) <input type="number" id="neckHeight" value="2" min="0" max="8" step="0.5"></label>
+        <div class="row" id="neckRow">
+          <label>Neck width (mm) <input type="number" id="neckWidth" value="10" min="4" max="20" step="1"></label>
+          <label>Neck height (mm) <input type="number" id="neckHeight" value="2" min="0" max="8" step="0.5"></label>
+        </div>
+        <div id="headerOptions">
+          <label>Header shape
+            <select id="headerShape"></select>
+          </label>
+          <div class="row">
+            <label id="leanRow">Lean (%) <input type="number" id="lean" value="60" min="0" max="100" step="5"></label>
+            <label id="roundingRow">Corner rounding (mm) <input type="number" id="rounding" value="4" min="0" max="15" step="0.5"></label>
+          </div>
+          <div class="row">
+            <label>Move hole left / right (mm) <input type="number" id="holeOffsetX" value="0" min="-30" max="30" step="0.5"></label>
+            <label>Move hole up / down (mm) <input type="number" id="holeOffsetY" value="0" min="-20" max="20" step="0.5"></label>
+          </div>
+          <button type="button" id="resetHole" class="small">Reset hole position</button>
+        </div>
+        <small class="muted" id="loopNote"></small>
       </fieldset>
 
       <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF (2 parts)</button></div>

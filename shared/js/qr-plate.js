@@ -8,6 +8,8 @@
 // truly overlap and slicers union them instead of seeing coplanar faces.
 import * as THREE from 'three';
 import qrcode from 'qrcode-generator';
+import { extrudeShapes, groupsToShapes } from './geometry2d.js';
+import { roundedRectRing } from './rings.js';
 
 const EPS = 0.005;
 const OVERLAP = 0.2;
@@ -71,6 +73,9 @@ const BACK_FLOOR = 0.4; // thickness of the dark "floor" under the back pockets 
  *  backDepth (mm, optional): also engrave the code into the underside, mirrored so it reads correctly when
  *  the keychain is flipped over (like turning a page: left/right swap, top stays top). The pockets are
  *  coloured: you look into a pocket and see the dark (QR) colour.
+ *  roundFar ('bottom' | 'top' | null): round the two plate corners along that edge (y = 0 or y = size) with a
+ *  radius equal to the quiet zone, so the arcs are concentric with the code's corners and the quiet zone stays
+ *  exactly `margin` wide there. Other corners stay square.
  * @returns {{ meshes: THREE.Mesh[], size: number, filamentChangeZ: number, filamentChangeZs: number[] }}
  *  Meshes are named 'qr' (the dark colour) or 'base' (the light colour), so layer/part colours reproduce the
  *  preview. Plate occupies [0,size]^2. The light back layer has userData.back = true; the dark pocket floors
@@ -78,7 +83,7 @@ const BACK_FLOOR = 0.4; // thickness of the dark "floor" under the back pockets 
  *  filamentChangeZs: heights for a single-extruder colour swap. In raised mode the dark back floors share
  *  layers with the light plate, so they cannot be made by a height swap (they need two filament slots).
  */
-export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d, mode, materials, backDepth = 0 }) {
+export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d, mode, materials, backDepth = 0, roundFar = null }) {
   const n = matrix.length;
   const P = n * m + 2 * margin;
   const cell = rect => [margin + rect.x0 * m, P - margin - rect.y1 * m, margin + rect.x1 * m, P - margin - rect.y0 * m];
@@ -86,26 +91,53 @@ export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d
   const db = backDepth > 0 ? backDepth : 0;
   const mirrored = matrix.map(row => row.slice().reverse()); // the back is viewed from the other side
 
+  // The plate silhouette, or a box when no corners are rounded.
+  const plateSlab = (z0, z1, name) => {
+    if (!roundFar) return box(0, 0, P, P, z0, z1, name, materials);
+    const radii = roundFar === 'bottom' ? [margin, margin, 0, 0] : [0, 0, margin, margin];
+    const mesh = new THREE.Mesh(extrudeShapes(groupsToShapes([{ outer: roundedRectRing(0, 0, P, P, radii, 24), holes: [] }]), z1 - z0, z0), materials[name]);
+    mesh.name = name;
+    return mesh;
+  };
+  // The quiet-zone strip along the rounded edge: `margin` thick, both outer ends quarter circles of radius `margin`.
+  const roundedStrip = (side, z0, z1, name) => {
+    const k = margin, steps = 24, ring = [];
+    const arc = (cx, a0, a1) => { for (let i = 0; i <= steps; i++) { const a = a0 + (a1 - a0) * (i / steps); ring.push([cx + k * Math.cos(a), k + k * Math.sin(a)]); } };
+    arc(P - k, -Math.PI / 2, 0);            // bottom-right: (P-k, 0) -> (P, k)
+    arc(k, Math.PI, Math.PI * 1.5);         // bottom-left:  (0, k)  -> (k, 0)
+    for (const pt of ring) if (pt[1] >= k - 1e-9) pt[1] += EPS;   // overlap the side strips and cells it touches
+    const pts = side === 'bottom' ? ring : ring.map(([x, y]) => [x, P - y]);
+    const mesh = new THREE.Mesh(extrudeShapes(groupsToShapes([{ outer: pts, holes: [] }]), z1 - z0, z0), materials[name]);
+    mesh.name = name;
+    return mesh;
+  };
+  // The four strips of quiet zone around the code (light colour); userData flags are copied onto each mesh.
+  const quietZone = (z0, z1, name, flags = {}) => {
+    if (!(margin > 0)) return;
+    const put = mesh => { Object.assign(mesh.userData, flags); meshes.push(mesh); };
+    const bx = (x0, y0, x1, y1) => put(box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, z0, z1, name, materials));
+    if (roundFar === 'bottom') put(roundedStrip('bottom', z0, z1, name)); else bx(0, 0, P, margin);
+    if (roundFar === 'top') put(roundedStrip('top', z0, z1, name)); else bx(0, P - margin, P, P);
+    bx(0, margin, margin, P - margin); bx(P - margin, margin, P, P - margin);
+  };
+
   // light back layer: plate material from z = 0 up to zTop, with the (mirrored) modules left open as pockets.
   // It sits on the bed, so the pocket ceilings are bridged when printing.
   const lightBack = zTop => {
-    const add = (x0, y0, x1, y1) => {
+    quietZone(0, zTop, 'base', { back: true });
+    for (const r of gridRects(mirrored, v => !v)) {
+      const [x0, y0, x1, y1] = cell(r);
       const mesh = box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, 0, zTop, 'base', materials);
       mesh.userData.back = true;
       meshes.push(mesh);
-    };
-    if (margin > 0) {
-      add(0, 0, P, margin); add(0, P - margin, P, P);
-      add(0, margin, margin, P - margin); add(P - margin, margin, P, P - margin);
     }
-    for (const r of gridRects(mirrored, v => !v)) add(...cell(r));
   };
 
   if (mode === 'raised') {
     // [0, db]: light surround + open pockets. [db, db + FLOOR]: dark floors under the pockets.
     // Above that: the full light slab. The light boxes reach into the slab so they fuse with it.
     const zSlab = db ? db + BACK_FLOOR : 0;
-    meshes.push(box(0, 0, P, P, zSlab, T, 'base', materials));
+    meshes.push(plateSlab(zSlab, T, 'base'));
     if (db) {
       lightBack(zSlab + OVERLAP);
       for (const r of gridRects(mirrored, v => v)) {
@@ -123,14 +155,11 @@ export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d
   }
   // indented: light surround on the bed (back), dark slab above it (seen through the back pockets as their
   // floor), then a light top layer of thickness d with the front modules left open.
-  meshes.push(box(0, 0, P, P, db, T - d + OVERLAP, 'qr', materials));
+  meshes.push(plateSlab(db, T - d + OVERLAP, 'qr'));
   if (db) lightBack(db);
   const zLo = T - d;
+  quietZone(zLo, T, 'base');
   const top = (x0, y0, x1, y1) => meshes.push(box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, zLo, T, 'base', materials));
-  if (margin > 0) {
-    top(0, 0, P, margin); top(0, P - margin, P, P);
-    top(0, margin, margin, P - margin); top(P - margin, margin, P, P - margin);
-  }
   for (const r of gridRects(matrix, v => !v)) top(...cell(r));
   return { meshes, size: P, filamentChangeZ: zLo, filamentChangeZs: db ? [db, zLo] : [zLo] };
 }

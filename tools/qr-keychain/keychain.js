@@ -4,10 +4,36 @@ import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
 import { rasterizeTopDown, rasterizeBottomUp } from '../../shared/js/qr-plate.js';
 import { buildKeychain } from './geometry.js';
+import { LOOP_STYLES, HEADER_SHAPES, loopStyle } from './loops.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
 const viewer = createViewer($('viewport'));
+for (const s of LOOP_STYLES) $('loopStyle').append(Object.assign(document.createElement('option'), { value: s.id, textContent: s.label }));
+for (const s of HEADER_SHAPES) $('headerShape').append(Object.assign(document.createElement('option'), { value: s.id, textContent: s.label }));
+
+const STYLE_NOTES = {
+  round: 'A classic ring. A neck wider than the ring becomes a base under it.',
+  'rounded-square': 'A square tab with soft corners.',
+  hexagon: 'Flat top and bottom; the size is the width across the corners.',
+  teardrop: 'A round loop that tapers to a point away from the code.',
+  'lanyard-slot': 'A wide stadium with a slot for a strap or lanyard, so the hole is a slot (set its length).',
+  header: 'A band as wide as the plate with the hole in it - the sturdiest option. Choose its outline and move the hole anywhere inside it; the neck settings are not used.',
+};
+function syncLoopControls() {
+  const style = $('loopStyle').value, def = loopStyle(style);
+  $('loopSizeLabel').textContent = `Loop size - ${def.size} (mm)`;
+  $('slotRow').style.display = style === 'lanyard-slot' ? '' : 'none';
+  $('neckRow').style.display = style === 'header' ? 'none' : '';
+  const header = style === 'header', shape = $('headerShape').value;
+  $('headerOptions').style.display = header ? '' : 'none';
+  $('leanRow').style.display = shape.startsWith('triangle') ? '' : 'none';
+  $('roundingRow').style.display = shape === 'semicircle' ? 'none' : '';
+  // a semicircle's height is fixed by the plate width, so the size field does not apply
+  $('loopDiameter').disabled = header && shape === 'semicircle';
+  if (header && shape === 'semicircle') $('loopSizeLabel').textContent = 'Loop size - height is half the plate width';
+  $('loopNote').textContent = STYLE_NOTES[style];
+}
 
 let model = null;
 let view = 'print';
@@ -22,9 +48,11 @@ function readParams() {
     module: num('module'), margin: num('margin'),
     mode: $('mode').value, thickness: num('thickness'), depth: num('depth'),
     baseColor: $('baseColor').value, qrColor: $('qrColor').value,
-    loopPosition: $('loopPosition').value, loopDiameter: num('loopDiameter'), holeDiameter: num('holeDiameter'),
+    loopStyle: $('loopStyle').value, loopPosition: $('loopPosition').value, loopDiameter: num('loopDiameter'), holeDiameter: num('holeDiameter'), slotLength: num('slotLength'),
+    headerShape: $('headerShape').value, lean: num('lean') / 100, rounding: num('rounding'), holeOffsetX: num('holeOffsetX'), holeOffsetY: num('holeOffsetY'),
     neckWidth: num('neckWidth'), neckHeight: num('neckHeight'),
     backDepth: $('backEngrave').checked ? num('backDepth') : 0,
+    roundBottomCorners: $('roundCorners').checked,
   };
 }
 
@@ -38,7 +66,8 @@ function rebuild() { clearTimeout(timer); timer = setTimeout(build, 120); }
 
 function build() {
   const p = readParams();
-  if ([p.module, p.margin, p.thickness, p.depth, p.loopDiameter, p.holeDiameter, p.neckWidth, p.neckHeight, p.backDepth].some(Number.isNaN)) return;
+  if ([p.module, p.margin, p.thickness, p.depth, p.loopDiameter, p.holeDiameter, p.neckWidth, p.neckHeight, p.backDepth, p.slotLength, p.lean, p.rounding, p.holeOffsetX, p.holeOffsetY].some(Number.isNaN)) return;
+  syncLoopControls();
   let res;
   try {
     res = buildKeychain(p);
@@ -82,6 +111,7 @@ function build() {
   else $('scanBack').hidden = true;
 }
 
+$('resetHole').addEventListener('click', () => { $('holeOffsetX').value = 0; $('holeOffsetY').value = 0; rebuild(); });
 $('controls').addEventListener('input', rebuild);
 $('controls').addEventListener('change', rebuild);
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
