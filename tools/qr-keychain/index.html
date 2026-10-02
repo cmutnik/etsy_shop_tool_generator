@@ -80,7 +80,7 @@
         <label>Neck height (mm) <input type="number" id="neckHeight" value="2" min="0" max="8" step="0.5"></label>
       </fieldset>
 
-      <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF (colour)</button></div>
+      <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF (2 parts)</button></div>
       <div id="error" class="error" hidden></div>
       <div id="warnings"></div>
     </section>
@@ -101,7 +101,7 @@
           <li><b>Two colours:</b> add one filament change at the height shown above (in your slicer's layer slider). Raised: the dark QR is printed in the last layers. Engraved: dark below, light on top.</li>
           <li><b>Settings:</b> 0.4 mm nozzle, 0.12-0.2 mm layers, 3+ walls. Make the QR layers a whole number of layers thick for the cleanest contrast.</li>
           <li><b>Scanning:</b> always test-scan the printed keychain. If it is unreliable, enlarge the modules, raise the error correction, or use a more contrasting pair of colours.</li>
-          <li><b>3MF:</b> the colour 3MF tags the plate and the QR with their colours; slicers that don't read it will just show one colour, and the filament change still works.</li>
+          <li><b>3MF in Orca / Bambu / PrusaSlicer:</b> the colour 3MF contains the plate and the QR as two parts, already assigned to filament slots 1 and 2. Load filaments into those two slots (plate colour in slot 1, QR colour in slot 2). The colours you pick here are only a preview; the slicer uses whatever filament is in each slot. Use the STL plus a single filament change if your printer has one extruder.</li>
         </ul>
       </details>
     </section>

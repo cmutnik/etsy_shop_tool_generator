@@ -81,6 +81,6 @@ document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click'
 
 const slug = () => $('data').value.toLowerCase().replace(/^https?:\/\//, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'qr';
 $('download').addEventListener('click', () => downloadBlob(exportSTL(model), `qr-keychain-${slug()}.stl`));
-$('download3mf').addEventListener('click', () => downloadBlob(export3MF(model, { title: 'QR keychain', colors: true }), `qr-keychain-${slug()}.3mf`));
+$('download3mf').addEventListener('click', () => downloadBlob(export3MF(model, { title: 'QR keychain', parts: [{ name: 'base', label: 'Plate' }, { name: 'qr', label: 'QR code' }] }), `qr-keychain-${slug()}.3mf`));
 
 build();

@@ -6,7 +6,7 @@
 // Colours follow layers, so a single filament change at `filamentChangeZ` reproduces the preview.
 import * as THREE from 'three';
 import { qrMatrix, buildQrPlate } from '../../shared/js/qr-plate.js';
-import { extrudeShapes } from '../../shared/js/geometry2d.js';
+import { extrudeShapes, signedArea } from '../../shared/js/geometry2d.js';
 
 const OVERLAP = 0.2;
 const MIN_WALL = 2.5; // mm of material around the hole, as in the Python version
@@ -35,7 +35,9 @@ export function loopOutline({ loopDiameter, neckWidth, neckHeight, sign = 1 }) {
     if (wide) pts.push([hw, cy]);
     pts.push([hw, y0]);
   }
-  return { pts: pts.map(([x, y]) => [x, y * sign]), cx: 0, cy: cy * sign, R };
+  const out = pts.map(([x, y]) => [x, y * sign]);
+  // counter-clockwise, so ExtrudeGeometry normalises the hole's winding (see groupsToShapes)
+  return { pts: signedArea(out) < 0 ? out.reverse() : out, cx: 0, cy: cy * sign, R };
 }
 
 /**
@@ -64,7 +66,7 @@ export function buildKeychain(o) {
   const outline = loopOutline({ loopDiameter: o.loopDiameter, neckWidth: o.neckWidth, neckHeight: o.neckHeight, sign });
   const shape = new THREE.Shape(outline.pts.map(([x, y]) => new THREE.Vector2(x, y)));
   const hole = new THREE.Path();
-  hole.absarc(outline.cx, outline.cy, o.holeDiameter / 2, 0, Math.PI * 2, true);
+  hole.absarc(outline.cx, outline.cy, o.holeDiameter / 2, 0, Math.PI * 2, false);
   shape.holes.push(hole);
   const place = g => { g.translate(P / 2, sign > 0 ? P : 0, 0); return g; };
   const loopParts = [];

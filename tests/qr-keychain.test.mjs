@@ -107,20 +107,47 @@ test('gridRects covers exactly the picked cells, with no overlap', () => {
   assert.ok(rects.length < m.flat().filter(Boolean).length, 'merging reduces box count');
 });
 
-test('3MF with colours: two base materials, every triangle tagged, valid zip', () => {
-  const r = buildKeychain(base);
-  const { palette } = collectMesh(r.group);
-  assert.deepEqual([...palette].sort(), ['#111111', '#FFFFFF']);
-  return export3MF(r.group, { title: 'Keychain', colors: true }).arrayBuffer().then(buf => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kc-')), 'k.3mf');
-    fs.writeFileSync(file, Buffer.from(buf));
+const PARTS = [{ name: 'base', label: 'Plate' }, { name: 'qr', label: 'QR code' }];
+const unzipText = (file, entry) => execFileSync('unzip', ['-p', file, entry]).toString();
+async function write3mf(group, opts) {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'kc-')), 'k.3mf');
+  fs.writeFileSync(file, Buffer.from(await export3MF(group, opts).arrayBuffer()));
+  return file;
+}
+
+test('3MF multi-colour: Orca/Bambu layout - one part per colour, filament slot per part', async () => {
+  for (const mode of ['raised', 'indented']) {
+    const r = buildKeychain({ ...base, mode });
+    const file = await write3mf(r.group, { title: 'Keychain', parts: PARTS });
     assert.match(execFileSync('unzip', ['-t', file]).toString(), /No errors detected/);
-    const xml = execFileSync('unzip', ['-p', file, '3D/3dmodel.model']).toString();
-    assert.equal((xml.match(/<base /g) || []).length, 2);
-    const tris = xml.match(/<triangle /g).length;
-    assert.equal((xml.match(/<triangle [^>]*pid="2"/g) || []).length, tris);
-    assert.match(xml, /displaycolor="#111111FF"/);
-    // uncoloured export (the default) stays plain
-    return export3MF(r.group).arrayBuffer().then(b2 => assert.ok(!Buffer.from(b2).toString('latin1').includes('basematerials')));
-  });
+    const model = unzipText(file, '3D/3dmodel.model');
+    const cfg = unzipText(file, 'Metadata/model_settings.config');
+    // plate is always filament slot 1 and the QR slot 2, whichever mesh comes first in the scene
+    assert.match(cfg, /<object id="5">/);
+    assert.match(cfg, /<part id="3"[^>]*>\s*<metadata key="name" value="Plate"\/>\s*<metadata key="extruder" value="1"\/>/);
+    assert.match(cfg, /<part id="4"[^>]*>\s*<metadata key="name" value="QR code"\/>\s*<metadata key="extruder" value="2"\/>/);
+    // parent object assembles the two parts; build item is the parent
+    assert.match(model, /<object id="5"[^>]*><components><component objectid="3"\/><component objectid="4"\/><\/components><\/object>/);
+    assert.match(model, /<build><item objectid="5"\/><\/build>/);
+    // part meshes: valid indices, nothing lost, plate is the light colour
+    const objs = [...model.matchAll(/<object id="(\d)"[^>]*type="model"[^>]*pid="1" pindex="(\d)"><mesh>(.*?)<\/mesh>/gs)];
+    assert.equal(objs.length, 2);
+    let total = 0;
+    for (const [, , , mesh] of objs) {
+      const nv = (mesh.match(/<vertex /g) || []).length;
+      const tr = [...mesh.matchAll(/v1="(\d+)" v2="(\d+)" v3="(\d+)"/g)];
+      assert.ok(tr.length > 0);
+      for (const t of tr) for (const i of t.slice(1)) assert.ok(+i < nv, 'triangle index in range');
+      total += tr.length;
+    }
+    assert.equal(total, collectMesh(r.group).tris.length / 3);
+    assert.match(model, /<base name="Plate" displaycolor="#FFFFFFFF"\/><base name="QR code" displaycolor="#111111FF"\/>/);
+    assert.match(fs.readFileSync(file).toString('latin1'), /model_settings\.config/);
+  }
+});
+
+test('3MF without parts stays a plain single mesh', async () => {
+  const file = await write3mf(buildKeychain(base).group, {});
+  assert.doesNotMatch(unzipText(file, '3D/3dmodel.model'), /basematerials|components/);
+  assert.equal(execFileSync('unzip', ['-l', file]).toString().includes('model_settings'), false);
 });
