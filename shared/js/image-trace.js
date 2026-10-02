@@ -147,14 +147,50 @@ export function imageToGroups(img, { tolerance = 0.7, minArea = 6, frame = false
   return { ...centerGroups(contoursToGroups(rings)), threshold, source, framed: false };
 }
 
-/** Browser only: decode an image File to RGBA pixels, downscaled so the long side <= maxSize. */
+/** A plain-language reason (and a way out) for a picture the browser could not open. Pure, so it is tested in Node. */
+export function explainImageError(file) {
+  const name = (file && file.name) || '', type = (file && file.type) || '';
+  const ext = (name.match(/\.([a-z0-9]+)$/i) || [, ''])[1].toLowerCase();
+  if (/hei[cf]/i.test(type) || ext === 'heic' || ext === 'heif') return 'This is an iPhone HEIC photo, which most browsers cannot open. Save or export it as a JPG or PNG (on an iPhone: Settings > Camera > Formats > Most Compatible) and try again.';
+  if (ext === 'tif' || ext === 'tiff' || /tiff/i.test(type)) return 'TIFF files cannot be opened by a browser. Convert it to a PNG or JPG first.';
+  if (['psd', 'ai', 'eps', 'pdf', 'cdr', 'xcf'].includes(ext) || /pdf|photoshop/i.test(type)) return `.${ext} files cannot be read here. Export the picture as a PNG, JPG or SVG first.`;
+  if (['cr2', 'nef', 'arw', 'dng', 'raf', 'orf'].includes(ext)) return 'RAW camera files cannot be opened. Export the photo as a JPG first.';
+  if (ext === 'svg' || /svg/i.test(type)) return 'That SVG could not be drawn. It may use features browsers cannot render as an image (external files or scripts). Try exporting it again as a plain SVG, or as a PNG.';
+  if (file && file.size === 0) return 'That file is empty.';
+  return 'This browser could not read that file. Try a PNG, JPG, WebP or SVG.';
+}
+
+/**
+ * Browser only: decode an image File to RGBA pixels. Raster pictures are only ever scaled down, to a long side <= maxSize.
+ * SVG (and anything createImageBitmap cannot decode, which an <img> often can) goes through an <img>; a vector is drawn at maxSize
+ * so it is crisp, on a transparent canvas, so a logo keeps its transparent background.
+ */
 export async function readImageFile(file, maxSize = 640) {
-  const bmp = await createImageBitmap(file);
-  const s = Math.min(1, maxSize / Math.max(bmp.width, bmp.height));
-  const w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+  const isSvg = /svg/i.test(file.type) || /\.svg$/i.test(file.name);
+  let source = null, sw = 0, sh = 0, url = null;
+  if (!isSvg) {
+    try { source = await createImageBitmap(file); sw = source.width; sh = source.height; } catch { source = null; }
+  }
+  if (!source) {
+    url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      sw = img.naturalWidth; sh = img.naturalHeight;
+      if (!sw || !sh) { sw = sh = 1000; }                    // an SVG with no size of its own: draw it square at the working size
+      source = img;
+    } catch {
+      URL.revokeObjectURL(url);
+      throw new Error(explainImageError(file));
+    }
+  }
+  const s = isSvg ? maxSize / Math.max(sw, sh) : Math.min(1, maxSize / Math.max(sw, sh));
+  const w = Math.max(1, Math.round(sw * s)), h = Math.max(1, Math.round(sh * s));
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(bmp, 0, 0, w, h);
+  ctx.drawImage(source, 0, 0, w, h);
+  if (url) URL.revokeObjectURL(url);
   return ctx.getImageData(0, 0, w, h);
 }

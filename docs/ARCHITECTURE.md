@@ -18,6 +18,8 @@ shared/js/                  code used by more than one tool
   svg-import.js             SVG text -> groups
   image-ops.js              picture -> black & white masks (threshold / adaptive / dither / edges), cleanup, mask -> SVG
   image-color.js            background removal, colour posterize (k-means) and per-layer SVGs that share one frame
+  segmentation.js           seeded segmentation (random walker): subject mask from a few user-painted marks
+  curves.js                 cubic Bezier fitting (Schneider) with corner detection, for smooth SVG output
   skeleton.js               centre-line tracing: thinning, spur pruning, skeleton -> paths -> stroke SVG
   zip.js                    minimal zip writer (no dependencies); re-exported by export.js
   image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares
@@ -60,7 +62,7 @@ from fonts and icons should also pass through a polygon union and a ~0.02 mm sim
 
 ## Keep pages light
 A page only needs an import map entry for what its own module graph imports, so keep non-3D code free of Three.js:
-`geometry-pure.js`, `rings.js`, `download.js`, `zip.js`, `image-*.js`, `skeleton.js` and `raster-tools.js` have no dependencies, while `geometry2d.js`,
+`geometry-pure.js`, `rings.js`, `download.js`, `zip.js`, `image-*.js`, `segmentation.js`, `curves.js`, `skeleton.js` and `raster-tools.js` have no dependencies, while `geometry2d.js`,
 `export.js`, `svg-import.js` and `qr-plate.js` import Three.js. `tests/page-deps.test.mjs` walks each tool page's imports and fails
 if one is missing from (or unused in) that page's import map, which is the failure Node tests otherwise cannot see.
 

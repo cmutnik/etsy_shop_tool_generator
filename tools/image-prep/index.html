@@ -19,8 +19,11 @@
     <section class="controls" id="controls">
       <fieldset>
         <legend>Image</legend>
-        <label>Choose a picture <small>(PNG, JPG, WebP - or drop one on the preview)</small>
-          <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp">
+        <label>Choose a picture <small>(PNG, JPG, WebP, SVG - or drop one on the preview)</small>
+          <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,image/svg+xml,.svg">
+        </label>
+        <label>Start from a preset
+          <select id="preset"><option value="">Custom (my own settings)</option></select>
         </label>
         <label>Working size
           <select id="maxSide">
@@ -56,12 +59,27 @@
         <label class="inline" id="bgRemoveRow"><input type="checkbox" id="bgRemove"> Remove the background first</label>
         <div id="bgOptions">
           <label>Background colour
-            <select id="bgMode"><option value="auto">Auto - the colour along the picture's edge</option><option value="pick">Pick a colour</option></select>
+            <select id="bgMode"><option value="auto">Auto - the colour along the picture's edge</option><option value="pick">Pick a colour</option><option value="marks">Mark the subject and background (busy photos)</option></select>
           </label>
           <label id="bgColorRow">Colour <input type="color" id="bgColor" value="#ffffff"> <small class="muted-inline">or click the original picture</small></label>
+          <div id="marksBox">
+            <div class="seg brushes" role="group" aria-label="Brush">
+              <button type="button" data-brush="subject" class="active">Subject</button>
+              <button type="button" data-brush="background">Background</button>
+              <button type="button" data-brush="erase">Erase</button>
+            </div>
+            <div class="row">
+              <label>Brush size (px) <input type="range" id="brushSize" value="12" min="2" max="80" step="1"></label>
+              <label>Include more of the edge <input type="range" id="marksBias" value="50" min="15" max="85" step="1"></label>
+            </div>
+            <button type="button" id="clearMarks" class="small">Clear marks</button>
+            <small class="muted">Paint a few strokes on the original picture: <b style="color:#0a8a4a">green</b> on the subject, <b style="color:#d12">red</b> on the background. A stroke through each different part of the background helps most; add strokes where the edge is wrong.</small>
+          </div>
+          <div id="colourKeyBox">
           <label>Tolerance <input type="range" id="bgTolerance" value="25" min="3" max="80" step="1"></label>
           <label class="inline"><input type="checkbox" id="bgContiguous" checked> Only remove background connected to the edge <small class="muted-inline">(keeps same-coloured areas inside the subject)</small></label>
           <label class="inline"><input type="checkbox" id="bgGradient" checked> Follow gradients and soft shadows <small class="muted-inline">(a sharp outline still stops it)</small></label>
+          </div>
           <div class="row">
             <label>Soft edge (px) <input type="number" id="bgFeather" value="1" min="0" max="8" step="1"></label>
             <label>Shrink edge (px) <input type="number" id="bgShrink" value="0" min="0" max="6" step="1"></label>
@@ -141,9 +159,9 @@
 
       <fieldset id="svgBox">
         <legend>SVG</legend>
-        <label class="inline"><input type="checkbox" id="smoothCurves" checked> Smooth curves</label>
-        <label>Path simplification <input type="range" id="tolerance" value="0.7" min="0.2" max="3" step="0.1"></label>
-        <small class="muted">Higher simplification means fewer points and a smaller file, but less exact edges.</small>
+        <label class="inline"><input type="checkbox" id="smoothCurves" checked> Smooth curves <small class="muted-inline">(fitted Bezier curves, corners stay sharp)</small></label>
+        <label>Path accuracy <small class="muted-inline">(how far a curve or line may stray, in px)</small> <input type="range" id="tolerance" value="0.7" min="0.2" max="3" step="0.1"></label>
+        <small class="muted">A lower number follows the edges more exactly; a higher one is smoother and simpler. Curves give smoother edges than straight segments, but a file with more curves is not smaller.</small>
       </fieldset>
 
       <fieldset>
@@ -154,6 +172,9 @@
         </div>
         <label class="inline"><input type="checkbox" id="crop"> Trim empty margins</label>
         <div class="row" id="cropRow"><label>Margin to keep (px) <input type="number" id="cropPad" value="8" min="0" max="200" step="1"></label></div>
+        <label>Print width (mm) <small class="muted-inline">(optional)</small> <input type="number" id="printWidth" value="" min="5" max="400" step="1" placeholder="e.g. 50"></label>
+        <label class="inline" id="showThinRow"><input type="checkbox" id="showThin" checked> Highlight details too thin to print (0.6 mm)</label>
+        <small class="muted">Enter how wide the finished print will be. Black details narrower than 0.6 mm at that size are marked red on the result: a 0.4 mm nozzle cannot print them reliably.</small>
         <div class="row">
           <label>Ink colour <input type="color" id="color" value="#000000"></label>
           <label class="inline" id="paperRow"><input type="checkbox" id="transparent"> Transparent background</label>
@@ -169,15 +190,23 @@
     </section>
 
     <section class="preview">
-      <div class="viewbar"><span id="status" class="status"></span></div>
+      <div id="previewError" class="error" hidden role="alert"></div>
+      <div class="viewbar">
+        <span class="zoomlabel">Zoom</span>
+        <button type="button" data-zoom="fit" class="active">Fit</button>
+        <button type="button" data-zoom="1">100%</button>
+        <button type="button" data-zoom="2">200%</button>
+        <button type="button" data-zoom="4">400%</button>
+        <span id="status" class="status"></span>
+      </div>
       <div class="compare" id="drop">
         <figure>
           <figcaption>Original</figcaption>
-          <div class="frame"><canvas id="original"></canvas><p class="placeholder" id="placeholder">Choose or drop a picture to start.</p></div>
+          <div class="frame checker" id="frameOrig"><div class="stack" id="stackOrig"><canvas id="original"></canvas><canvas id="marks"></canvas></div><p class="placeholder" id="placeholder">Choose or drop a picture to start.</p></div>
         </figure>
         <figure>
           <figcaption>Result</figcaption>
-          <div class="frame checker"><canvas id="resultPng"></canvas><img id="resultSvg" alt="Line art result"></div>
+          <div class="frame checker" id="frameRes"><div class="stack" id="stackRes"><canvas id="resultPng"></canvas><img id="resultSvg" alt="Line art result"><canvas id="thin"></canvas></div></div>
         </figure>
       </div>
       <div id="layersBox" class="layers-box"><h3>Layers <small>one stamp per ink colour</small></h3><div id="layers" class="layers"></div></div>

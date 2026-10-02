@@ -5,6 +5,7 @@
 import { grayFromImage, boxBlur, otsuThreshold, traceMask } from './image-trace.js';
 import { distanceSquared } from './raster-tools.js';
 import { signedArea, simplifyRing } from './geometry-pure.js';
+import { fitClosed, closedChainToPath } from './curves.js';
 
 // ---------- grayscale tools ----------
 
@@ -232,39 +233,28 @@ export function maskToRGBA(mask, w, h, { ink = [0, 0, 0], paper = [255, 255, 255
 
 const fmt = n => String(Math.round(n * 100) / 100);
 
-/** Add points so no segment is longer than maxSeg. */
-function densify(ring, maxSeg) {
-  const out = [];
-  for (let i = 0; i < ring.length; i++) {
-    const a = ring[i], b = ring[(i + 1) % ring.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.max(1, Math.ceil(len / maxSeg));
-    for (let j = 0; j < k; j++) out.push([a[0] + ((b[0] - a[0]) * j) / k, a[1] + ((b[1] - a[1]) * j) / k]);
-  }
-  return out;
-}
-
 /**
  * Trace a mask into an SVG: one path of filled shapes (holes via even-odd), in pixel units.
  * @param {object} o
- *  tolerance (px, outline simplification), minArea (px^2, drop specks), smooth (round the corners slightly with
- *  quadratic curves), color (fill), background (CSS colour or null for transparent), scale (output size multiplier)
+ *  tolerance (px): without smoothing, how much the polygon outline is simplified; with smoothing, how far the fitted curves may
+ *  stray from the traced outline.
+ *  minArea (px^2, drop specks), smooth (fit cubic Bezier curves to the outline, keeping corners sharp: genuinely smooth edges. The
+ *  file is not smaller than a coarse polygon, since a curve costs 6 numbers where a vertex costs 2), color (fill), background (CSS colour or null for transparent), scale (output size multiplier)
  * @returns {{ svg: string, shapes: number, nodes: number, d: string }}  `d` is the path data, so several layers can be combined
  */
 export function maskToSvg(mask, w, h, { tolerance = 0.7, minArea = 6, smooth = false, color = '#000000', background = null, scale = 1 } = {}) {
-  const rings = traceMask(mask, w, h)
-    .filter(r => Math.abs(signedArea(r)) >= minArea)
-    .map(r => simplifyRing(r, tolerance).map(([x, y]) => [x + 0.5, y + 0.5])); // pixel centres -> pixel corners
+  const traced = traceMask(mask, w, h).filter(r => Math.abs(signedArea(r)) >= minArea);
   let d = '', nodes = 0;
-  for (const ring of rings) {
-    if (smooth && ring.length >= 3) {
-      const P = densify(ring, 2), n = P.length, mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-      const s = mid(P[n - 1], P[0]);
-      d += `M${fmt(s[0])} ${fmt(s[1])}`;
-      for (let i = 0; i < n; i++) { const m = mid(P[i], P[(i + 1) % n]); d += `Q${fmt(P[i][0])} ${fmt(P[i][1])} ${fmt(m[0])} ${fmt(m[1])}`; }
-      d += 'Z'; nodes += n;
-    } else {
-      d += 'M' + ring.map(([x, y]) => `${fmt(x)} ${fmt(y)}`).join('L') + 'Z'; nodes += ring.length;
+  for (const raw of traced) {
+    if (smooth) {
+      const chain = fitClosed(raw.map(([x, y]) => [x + 0.5, y + 0.5]), Math.max(0.25, tolerance));   // pixel centres -> pixel corners
+      d += closedChainToPath(chain); nodes += chain.length * 3;
+      continue;
     }
+    const ring = simplifyRing(raw, tolerance).map(([x, y]) => [x + 0.5, y + 0.5]);
+    d += 'M' + ring.map(([x, y]) => `${fmt(x)} ${fmt(y)}`).join('L') + 'Z'; nodes += ring.length;
   }
+  const rings = traced;
   const bg = background ? `<rect width="${w}" height="${h}" fill="${background}"/>` : '';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${fmt(w * scale)}" height="${fmt(h * scale)}">${bg}<path fill="${color}" fill-rule="evenodd" d="${d}"/></svg>`;
   return { svg, shapes: rings.length, nodes, d };

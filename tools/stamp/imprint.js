@@ -1,10 +1,9 @@
 // Copyright (c) 2025 cmutnik
 // Flat 2D preview of what the stamp leaves on paper, with too-thin details highlighted.
 import { outlineShape } from '../../shared/js/geometry2d.js';
-import { thinFeatures } from '../../shared/js/raster-tools.js';
+import { thinFeatures, MIN_FEATURE_MM } from '../../shared/js/raster-tools.js';
 
-/** Raised features narrower than this (mm) are flagged: a 0.4 mm nozzle prints them unreliably. */
-export const MIN_FEATURE_MM = 0.6;
+export { MIN_FEATURE_MM };
 
 function groupPath(groups, toPx) {
   const path = new Path2D();

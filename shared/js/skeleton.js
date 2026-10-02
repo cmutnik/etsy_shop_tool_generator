@@ -1,6 +1,7 @@
 // Copyright (c) 2025 cmutnik
 // Centre-line tracing: thin a mask to a 1 px skeleton, prune stray branches, and turn it into paths.
 // Pure functions on typed arrays (mask: Uint8Array w*h, 1 = ink), no browser APIs.
+import { fitOpen, fitClosed, openChainToPath, closedChainToPath } from './curves.js';
 
 /** Zhang-Suen thinning: shrinks every stroke to a one pixel wide, 8-connected centre line. */
 export function thin(mask, w, h) {
@@ -139,23 +140,15 @@ export function pathsToStrokeSvg(paths, w, h, { width = 3, color = '#000000', to
     let length = 0;
     for (let i = 1; i < pts.length; i++) length += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
     if (length < minLength) continue;
+    if (smooth && pts.length >= 3) {
+      // real curves: Beziers fitted to the pixel path (corners kept), tolerance in px
+      d += p.closed ? closedChainToPath(fitClosed(pts, Math.max(0.3, tolerance))) : openChainToPath(fitOpen(pts, Math.max(0.3, tolerance)));
+      count++;
+      continue;
+    }
     pts = p.closed ? simplifyPolyline(pts.concat([pts[0]]), tolerance).slice(0, -1) : simplifyPolyline(pts, tolerance);
     if (pts.length < 2) continue;
-    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    if (smooth && pts.length >= 3) {
-      if (p.closed) {
-        const s = mid(pts[pts.length - 1], pts[0]);
-        d += `M${fmt(s[0])} ${fmt(s[1])}`;
-        for (let i = 0; i < pts.length; i++) { const m = mid(pts[i], pts[(i + 1) % pts.length]); d += `Q${fmt(pts[i][0])} ${fmt(pts[i][1])} ${fmt(m[0])} ${fmt(m[1])}`; }
-        d += 'Z';
-      } else {
-        d += `M${fmt(pts[0][0])} ${fmt(pts[0][1])}`;
-        for (let i = 1; i < pts.length - 1; i++) { const m = mid(pts[i], pts[i + 1]); d += `Q${fmt(pts[i][0])} ${fmt(pts[i][1])} ${fmt(m[0])} ${fmt(m[1])}`; }
-        d += `L${fmt(pts[pts.length - 1][0])} ${fmt(pts[pts.length - 1][1])}`;
-      }
-    } else {
-      d += 'M' + pts.map(([x, y]) => `${fmt(x)} ${fmt(y)}`).join('L') + (p.closed ? 'Z' : '');
-    }
+    d += 'M' + pts.map(([x, y]) => `${fmt(x)} ${fmt(y)}`).join('L') + (p.closed ? 'Z' : '');
     count++;
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${fmt(w * scale)}" height="${fmt(h * scale)}"><path fill="none" stroke="${color}" stroke-width="${fmt(width)}" stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;

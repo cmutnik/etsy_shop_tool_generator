@@ -77,8 +77,8 @@ test('pathsToStrokeSvg: uniform round strokes, smooth option, short paths droppe
   assert.ok(b.paths < a.paths, 'short stub dropped');
   const curved = blank(60, 60); disc(curved, 60, 30, 30, 15, 19);
   const cp = centerline(curved, 60, 60, { prune: 0 }).paths;
-  assert.ok(pathsToStrokeSvg(cp, 60, 60, { smooth: true }).svg.includes('Q'));
-  assert.ok(!pathsToStrokeSvg(cp, 60, 60, { smooth: false }).svg.includes('Q'));
+  assert.ok(pathsToStrokeSvg(cp, 60, 60, { smooth: true }).svg.includes('C'));
+  assert.ok(!pathsToStrokeSvg(cp, 60, 60, { smooth: false }).svg.includes('C'));
 });
 
 test('centre-line then re-thicken gives strokes of uniform thickness, whatever the original varied between', () => {
