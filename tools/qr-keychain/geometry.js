@@ -58,8 +58,9 @@ export function buildKeychain(o) {
   if (back) {
     if (back < 0.4) throw new Error('Back engraving must be at least 0.4 mm deep (2+ layers) to be visible.');
     // keep at least 0.8 mm of solid plate between the back pockets and the front features
-    const front = o.mode === 'indented' ? o.depth : 0;
-    if (back + front > o.thickness - 0.8) throw new Error(`Back engraving is too deep for this plate: depth ${back} mm${front ? ` + front engraving ${front} mm` : ''} must leave at least 0.8 mm of plate (thickness ${o.thickness} mm). Make the plate thicker or the engraving shallower.`);
+    // raised: back pockets + a 0.4 mm dark floor; indented: back pockets + front engraving
+    const front = o.mode === 'indented' ? o.depth : 0.4;
+    if (back + front > o.thickness - 0.8) throw new Error(`Back engraving is too deep for this plate: depth ${back} mm${o.mode === 'indented' ? ` + front engraving ${front} mm` : ' + 0.4 mm dark floor'} must leave at least 0.8 mm of plate (thickness ${o.thickness} mm). Make the plate thicker or the engraving shallower.`);
   }
   const matrix = qrMatrix(o.data, o.errorCorrection);
   const materials = {
@@ -81,7 +82,11 @@ export function buildKeychain(o) {
   if (o.mode === 'raised') loopParts.push(['base', place(extrudeShapes([shape], T, 0))]);
   else {
     const zc = plate.filamentChangeZ;
-    loopParts.push(['qr', place(extrudeShapes([shape], zc + OVERLAP, 0))]);
+    // same layering as the plate: [light on the bed if the back is engraved], dark, light top
+    if (back) {
+      loopParts.push(['base', place(extrudeShapes([shape], back, 0))]);
+      loopParts.push(['qr', place(extrudeShapes([shape], zc + OVERLAP - back, back))]);
+    } else loopParts.push(['qr', place(extrudeShapes([shape], zc + OVERLAP, 0))]);
     loopParts.push(['base', place(extrudeShapes([shape], T - zc, zc))]);
   }
   for (const [name, geo] of loopParts) {
@@ -101,6 +106,7 @@ export function buildKeychain(o) {
   if (o.module < 0.8) warnings.push(`Module size ${o.module} mm is below 2 nozzle widths (0.8 mm) - the code may not print cleanly or scan.`);
   if (o.margin < 2 * o.module) warnings.push('Quiet zone is under 2 modules wide - many scanners need about 4 modules of blank border.');
   if (o.depth < 0.4) warnings.push('Emboss/engrave depth under 0.4 mm gives weak contrast; use at least 2 layers.');
+  if (back && o.mode === 'raised') warnings.push('The coloured back code shares layers with the light plate, so it needs two filament slots (use the 3MF). A single filament change by height cannot make it.');
   if (back && back > 1.2) warnings.push('Back engraving deeper than ~1.2 mm means longer bridges over the pockets; if the ceilings sag, reduce the depth or raise the module size.');
   if (o.holeDiameter < 5) warnings.push('Hole is under 5 mm - a standard split ring may not thread through.');
   if (o.data === 'https://example.com') warnings.push('This is the sample link - replace it with your own before printing.');
@@ -119,6 +125,7 @@ export function buildKeychain(o) {
       plateSize: P,
       triangles: tris,
       filamentChangeZ: plate.filamentChangeZ,
+      filamentChangeZs: plate.filamentChangeZs,
       backDepth: back,
       warnings,
     },

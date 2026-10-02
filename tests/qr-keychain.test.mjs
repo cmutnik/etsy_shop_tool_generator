@@ -193,7 +193,7 @@ test('back engraving: all parts stay watertight/consistent and the front is unch
       const withBack = buildKeychain({ ...base, mode, loopPosition, thickness: 4, backDepth: 0.8 });
       withBack.group.children.forEach(m => assertWatertight(m, assert));
       const box = new THREE.Box3().setFromObject(withBack.group);
-      assert.ok(Math.abs(box.min.z) < 1e-9, 'still on the bed');
+      assert.ok(Math.abs(box.min.z) < 1e-6, 'still on the bed (float32 rounding aside)');
       assert.ok(withBack.meshes.some(m => m.userData.back) && withBack.meshes.filter(m => m.userData.back).length > 5);
       const without = buildKeychain({ ...base, mode, loopPosition, thickness: 4 });
       assert.equal(withBack.info.height, without.info.height);
@@ -201,12 +201,73 @@ test('back engraving: all parts stay watertight/consistent and the front is unch
     }
 });
 
-test('back engraving: pockets are open at z = 0 and its colour part matches the mode', () => {
+/** What you see looking up at the underside, by colour: the lowest surface over each pixel. dark = 'qr' part. */
+function undersideColours(meshes, size, ppm = 10) {
+  const w = Math.ceil(size * ppm), seen = new Float64Array(w * w).fill(Infinity), dark = new Uint8Array(w * w);
+  for (const m of meshes) {
+    m.geometry.computeBoundingBox();
+    const b = m.geometry.boundingBox;
+    const x0 = Math.max(0, Math.round((size - b.max.x) * ppm)), x1 = Math.min(w, Math.round((size - b.min.x) * ppm)); // mirrored: viewed from below
+    const y0 = Math.max(0, Math.round((size - b.max.y) * ppm)), y1 = Math.min(w, Math.round((size - b.min.y) * ppm));
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const i = y * w + x;
+      if (b.min.z < seen[i] - 1e-6) { seen[i] = b.min.z; dark[i] = m.name === 'qr' ? 1 : 0; }
+    }
+  }
+  const data = new Uint8ClampedArray(w * w * 4).fill(255);
+  for (let i = 0; i < w * w; i++) if (dark[i] && seen[i] < Infinity) data.fill(0, i * 4, i * 4 + 3);
+  return { data, width: w, height: w, seen, dark };
+}
+
+test('back engraving is coloured in: looking up at the underside, the pockets show the QR colour', () => {
+  for (const mode of ['raised', 'indented'])
+    for (const data of ['https://example.com', 'WIFI:T:WPA;S:net;P:secret;;']) {
+      const r = buildKeychain({ ...base, data, mode, thickness: 4, backDepth: 0.8 });
+      const view = undersideColours(r.meshes, r.info.plateSize, 10);
+      assert.equal(scanRaster(view), data, `${mode}: coloured underside decodes`);
+      // pocket cells are dark and sit db above the bed; the surround is light on the bed
+      const matrix = qrMatrix(data, base.errorCorrection), ppm = 10;
+      let wrong = 0;
+      matrix.forEach((row, ri) => row.forEach((dark, ci) => {
+        const px = Math.round((base.margin + (ci + 0.5) * base.module) * ppm), py = Math.round((base.margin + (ri + 0.5) * base.module) * ppm);
+        const i = py * view.width + px;
+        if (!!view.dark[i] !== dark) wrong++;
+        if (dark && Math.abs(view.seen[i] - 0.8) > 1e-6) wrong++;   // pocket floor at z = back depth
+        if (!dark && Math.abs(view.seen[i]) > 1e-6) wrong++;        // surround touches the bed
+      }));
+      assert.equal(wrong, 0, `${mode}: ${wrong} module cells with the wrong colour or height`);
+    }
+});
+
+test('back engraving: the loop is layered like the plate (light on the bed, dark, light top) in engraved mode', () => {
+  const r = buildKeychain({ ...base, mode: 'indented', thickness: 4, backDepth: 0.8 });
+  const loop = r.meshes.filter(m => m.geometry.type === 'ExtrudeGeometry');
+  const layers = loop.map(m => { m.geometry.computeBoundingBox(); return [m.name, +m.geometry.boundingBox.min.z.toFixed(3), +m.geometry.boundingBox.max.z.toFixed(3)]; }).sort((a, b) => a[1] - b[1]);
+  assert.deepEqual(layers, [['base', 0, 0.8], ['qr', 0.8, 3.6], ['base', 3.4, 4]]);
+  loop.forEach(m => assertWatertight(m, assert));
+  // without back engraving the loop's bed layer stays dark, as before
+  const plain = buildKeychain({ ...base, mode: 'indented', thickness: 4 }).meshes.filter(m => m.geometry.type === 'ExtrudeGeometry');
+  assert.deepEqual(plain.map(m => m.name).sort(), ['base', 'qr']);
+});
+
+test('back engraving: which mesh makes each colour, and the filament changes', () => {
   const raised = buildKeychain({ ...base, thickness: 4, backDepth: 0.8 });
   const indented = buildKeychain({ ...base, mode: 'indented', thickness: 4, backDepth: 0.8 });
+  // raised: light surround + dark floors (so it needs two filament slots)
   assert.ok(raised.meshes.filter(m => m.userData.back).every(m => m.name === 'base'));
-  assert.ok(indented.meshes.filter(m => m.userData.back).every(m => m.name === 'qr'));
-  // the back layer only covers the plate between pockets: it must leave real voids at z=0 (less area than a full plate)
+  const floors = raised.meshes.filter(m => m.userData.backFloor);
+  assert.ok(floors.length > 5 && floors.every(m => m.name === 'qr'));
+  assert.deepEqual(raised.info.filamentChangeZs, [4]);
+  assert.match(raised.info.warnings.join(), /two filament slots/);
+  // indented: light surround, the dark slab above is the floor -> plain height swaps: light, dark, light
+  assert.ok(indented.meshes.filter(m => m.userData.back).every(m => m.name === 'base'));
+  assert.equal(indented.meshes.filter(m => m.userData.backFloor).length, 0);
+  assert.equal(indented.info.filamentChangeZs.length, 2);
+  assert.ok(Math.abs(indented.info.filamentChangeZs[0] - 0.8) < 1e-9 && Math.abs(indented.info.filamentChangeZs[1] - 3.4) < 1e-9, String(indented.info.filamentChangeZs));
+  assert.doesNotMatch(indented.info.warnings.join(), /two filament slots/);
+  // no back engraving: unchanged behaviour
+  assert.deepEqual(buildKeychain({ ...base, mode: 'indented', thickness: 4 }).info.filamentChangeZs, [3.4]);
+  // the light back layer leaves real voids (pockets) at the bed
   const P = raised.info.plateSize;
   const area = r => r.meshes.filter(m => m.userData.back).reduce((a, m) => { m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox; return a + (b.max.x - b.min.x) * (b.max.y - b.min.y); }, 0);
   assert.ok(area(raised) < P * P * 0.8, `back layer area ${area(raised)} vs plate ${P * P}`);
@@ -215,6 +276,7 @@ test('back engraving: pockets are open at z = 0 and its colour part matches the 
 test('back engraving: validation', () => {
   assert.throws(() => buildKeychain({ ...base, backDepth: 0.2 }), /at least 0\.4 mm/);
   assert.throws(() => buildKeychain({ ...base, thickness: 3, backDepth: 2.5 }), /too deep/);
+  assert.throws(() => buildKeychain({ ...base, thickness: 3, backDepth: 1.9 }), /0\.4 mm dark floor/);
   assert.throws(() => buildKeychain({ ...base, mode: 'indented', thickness: 3, depth: 1, backDepth: 1.5 }), /front engraving 1 mm/);
   assert.doesNotThrow(() => buildKeychain({ ...base, thickness: 3, backDepth: 0.8 }));
   assert.equal(buildKeychain(base).info.backDepth, 0);

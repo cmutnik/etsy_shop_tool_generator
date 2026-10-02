@@ -61,31 +61,36 @@ function box(x0, y0, x1, y1, z0, z1, name, mat) {
   return m;
 }
 
+const BACK_FLOOR = 0.4; // thickness of the dark "floor" under the back pockets in raised mode
+
 /**
  * Build the QR plate.
  * @param {object} o
  *  matrix, module (mm per module), margin (mm quiet zone), thickness (plate, mm), depth (emboss/engrave, mm),
  *  mode 'raised'|'indented', materials { base, qr },
  *  backDepth (mm, optional): also engrave the code into the underside, mirrored so it reads correctly when
- *  the keychain is flipped over (like turning a page: left/right swap, top stays top)
- * @returns {{ meshes: THREE.Mesh[], size: number, filamentChangeZ: number }}
- *  Meshes are named 'qr' (the dark colour) or 'base' (the light colour), so a layer-based colour change
- *  at filamentChangeZ reproduces the preview. Plate occupies [0,size]^2. Meshes forming the back
- *  engraving have userData.back = true.
+ *  the keychain is flipped over (like turning a page: left/right swap, top stays top). The pockets are
+ *  coloured: you look into a pocket and see the dark (QR) colour.
+ * @returns {{ meshes: THREE.Mesh[], size: number, filamentChangeZ: number, filamentChangeZs: number[] }}
+ *  Meshes are named 'qr' (the dark colour) or 'base' (the light colour), so layer/part colours reproduce the
+ *  preview. Plate occupies [0,size]^2. The light back layer has userData.back = true; the dark pocket floors
+ *  (raised mode only) have userData.backFloor = true.
+ *  filamentChangeZs: heights for a single-extruder colour swap. In raised mode the dark back floors share
+ *  layers with the light plate, so they cannot be made by a height swap (they need two filament slots).
  */
 export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d, mode, materials, backDepth = 0 }) {
   const n = matrix.length;
   const P = n * m + 2 * margin;
   const cell = rect => [margin + rect.x0 * m, P - margin - rect.y1 * m, margin + rect.x1 * m, P - margin - rect.y0 * m];
   const meshes = [];
-  const z0 = backDepth > 0 ? backDepth : 0; // main slab starts above the back engraving layer
+  const db = backDepth > 0 ? backDepth : 0;
+  const mirrored = matrix.map(row => row.slice().reverse()); // the back is viewed from the other side
 
-  // back layer: the plate material in [0, backDepth] with the (mirrored) modules left open as pockets.
-  // It sits on the bed, so the pockets are open to the bed and their ceilings are bridged when printing.
-  const backLayer = name => {
-    if (!(backDepth > 0)) return;
+  // light back layer: plate material from z = 0 up to zTop, with the (mirrored) modules left open as pockets.
+  // It sits on the bed, so the pocket ceilings are bridged when printing.
+  const lightBack = zTop => {
     const add = (x0, y0, x1, y1) => {
-      const mesh = box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, 0, backDepth + OVERLAP, name, materials);
+      const mesh = box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, 0, zTop, 'base', materials);
       mesh.userData.back = true;
       meshes.push(mesh);
     };
@@ -93,22 +98,33 @@ export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d
       add(0, 0, P, margin); add(0, P - margin, P, P);
       add(0, margin, margin, P - margin); add(P - margin, margin, P, P - margin);
     }
-    const mirrored = matrix.map(row => row.slice().reverse());
     for (const r of gridRects(mirrored, v => !v)) add(...cell(r));
   };
 
   if (mode === 'raised') {
-    meshes.push(box(0, 0, P, P, z0, T, 'base', materials));
-    backLayer('base');
+    // [0, db]: light surround + open pockets. [db, db + FLOOR]: dark floors under the pockets.
+    // Above that: the full light slab. The light boxes reach into the slab so they fuse with it.
+    const zSlab = db ? db + BACK_FLOOR : 0;
+    meshes.push(box(0, 0, P, P, zSlab, T, 'base', materials));
+    if (db) {
+      lightBack(zSlab + OVERLAP);
+      for (const r of gridRects(mirrored, v => v)) {
+        const [x0, y0, x1, y1] = cell(r);
+        const floor = box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, db, zSlab, 'qr', materials);
+        floor.userData.backFloor = true;
+        meshes.push(floor);
+      }
+    }
     for (const r of gridRects(matrix, v => v)) {
       const [x0, y0, x1, y1] = cell(r);
       meshes.push(box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, T - OVERLAP, T + d, 'qr', materials));
     }
-    return { meshes, size: P, filamentChangeZ: T };
+    return { meshes, size: P, filamentChangeZ: T, filamentChangeZs: [T] };
   }
-  // indented: dark lower slab, light top layer of thickness d with the modules left open
-  meshes.push(box(0, 0, P, P, z0, T - d + OVERLAP, 'qr', materials));
-  backLayer('qr');
+  // indented: light surround on the bed (back), dark slab above it (seen through the back pockets as their
+  // floor), then a light top layer of thickness d with the front modules left open.
+  meshes.push(box(0, 0, P, P, db, T - d + OVERLAP, 'qr', materials));
+  if (db) lightBack(db);
   const zLo = T - d;
   const top = (x0, y0, x1, y1) => meshes.push(box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, zLo, T, 'base', materials));
   if (margin > 0) {
@@ -116,7 +132,7 @@ export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d
     top(0, margin, margin, P - margin); top(P - margin, margin, P, P - margin);
   }
   for (const r of gridRects(matrix, v => !v)) top(...cell(r));
-  return { meshes, size: P, filamentChangeZ: zLo };
+  return { meshes, size: P, filamentChangeZ: zLo, filamentChangeZs: db ? [db, zLo] : [zLo] };
 }
 
 /**
@@ -126,7 +142,7 @@ export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d
 export function rasterizeTopDown(meshes, mode, size, pxPerMm = 10) {
   const w = Math.ceil(size * pxPerMm), h = w;
   const data = new Uint8ClampedArray(w * h * 4).fill(255);
-  const boxes = meshes.filter(m => !m.userData.back && m.name === (mode === 'raised' ? 'qr' : 'base')).map(m => {
+  const boxes = meshes.filter(m => !m.userData.back && !m.userData.backFloor && m.name === (mode === 'raised' ? 'qr' : 'base')).map(m => {
     m.geometry.computeBoundingBox();
     return m.geometry.boundingBox;
   });

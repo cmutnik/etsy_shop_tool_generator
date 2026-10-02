@@ -56,7 +56,7 @@ function build() {
 
   const i = res.info;
   $('info').textContent = `${i.width.toFixed(1)} x ${i.depth.toFixed(1)} x ${i.height.toFixed(1)} mm  |  ${i.modules} x ${i.modules} modules  |  ${Math.round(i.triangles).toLocaleString()} triangles`
-    + `  |  filament change at Z = ${i.filamentChangeZ.toFixed(2)} mm`;
+    + `  |  filament change${i.filamentChangeZs.length > 1 ? 's' : ''} at Z = ${i.filamentChangeZs.map(z => z.toFixed(2)).join(' and ')} mm`;
   $('warnings').replaceChildren(...i.warnings.map(t => Object.assign(document.createElement('div'), { textContent: t })));
 
   $('backRow').style.display = $('backEngrave').checked ? '' : 'none';

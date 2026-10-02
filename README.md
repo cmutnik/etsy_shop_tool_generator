@@ -20,7 +20,7 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 
 - Link or text to QR (error correction L/M/Q/H, module size, quiet zone), raised or engraved, with a split-ring loop above or below.
 - **Scan check:** the model's own geometry is decoded in the page, so you know the code is readable before printing.
-- **Back engraving (optional):** the same QR cut, mirrored, into the underside so it reads correctly when you flip the keychain over. Single colour (shading only), printed with bridged pockets.
+- **Back engraving (optional):** the same QR cut, mirrored, into the underside so it reads correctly when you flip the keychain over, with the pockets coloured in the QR colour (bridged pockets; see the tool's tips for the filament changes).
 - Two-colour output: the page shows the height for a single filament change; the 3MF carries plate and QR colours.
 
 ### 3D Stamp Generator
