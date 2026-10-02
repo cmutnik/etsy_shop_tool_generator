@@ -2,7 +2,7 @@
 # Architecture
 
 A **static site**: plain HTML + ES modules, no build step, hostable on GitHub Pages. Third-party libraries load from
-jsDelivr through an import map in each page (`three`, `three/addons/`, `opentype.js`, `qrcode-generator`, `jsqr` - each page lists only what it uses). Everything runs in the
+jsDelivr through an import map in each page (`three`, `three/addons/`, `opentype.js`, `qrcode-generator`, `jsqr`, `polygon-clipping` - each page lists only what it uses). **Use jsDelivr's `+esm` URL for any npm package**: the raw `dist` file often imports bare package names (e.g. `polygon-clipping` imports `splaytree`) that a browser cannot resolve, and Node tests will not catch it. Everything runs in the
 browser - nothing is uploaded.
 
 ```
@@ -11,6 +11,7 @@ assets/style.css            site-wide look & feel (light/dark)
 assets/tool.css             layout + controls shared by tool pages
 shared/js/                  code used by more than one tool
   geometry2d.js             "groups" ({outer, holes}) -> THREE.Shape, outline shapes, extrude, simplify
+  boolean2d.js              2D polygon union/difference (polygon-clipping) + circle / rounded-rectangle rings
   text-layout.js            opentype.js font + text -> groups
   svg-import.js             SVG text -> groups
   image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares

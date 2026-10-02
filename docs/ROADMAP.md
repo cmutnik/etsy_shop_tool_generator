@@ -19,8 +19,8 @@ until each tool has a working equivalent here.
 | `qr_stand_utils.icon_polygons`, `icons.py` | Banner icons | `shared/js/icons.js` | Port the SVG path data; render with `svg-import.js`. |
 | `qr_stand_utils.text_to_polygons` (potrace) | Banner title text | `shared/js/text-layout.js` (exists) | opentype outlines replace the potrace round trip. |
 | `qr_stand_utils.build_banner_*`, `stack_plate_pieces` | Banner above/below QR | `shared/js/qr-plate.js` | Same region-splitting idea as `splitRegions()` in `tools/stamp/geometry.js` - lift it into `shared/` when the second tool needs it. |
-| `qr_stand_utils.build_stand_base_mesh` | Base with angled slot | `tools/qr-stand/` | Slot is a 2D boolean (shapely) before extrusion. Needs a polygon boolean lib: `polygon-clipping` or `clipper-lib` (both small, CDN-able). If a true 3D boolean is ever needed: `manifold-3d` (WASM). |
-| `qr_stand_utils.build_keychain_loop_mesh` | Loop with hole | `tools/qr-keychain/geometry.js` **(done)** | `loopOutline()` computes the circle + neck union analytically, no boolean library. |
+| `qr_stand_utils.build_stand_base_mesh` | Base with angled slot | `tools/qr-stand/` | Slot is a 2D boolean (shapely) before extrusion; `difference()` in `shared/js/boolean2d.js` is the JS equivalent. Use `shared/js/boolean2d.js` (`polygon-clipping`, already in the repo) for the 2D cut. If a true 3D boolean is ever needed: `manifold-3d` (WASM). |
+| `qr_stand_utils.build_keychain_loop_mesh` | Loop with hole | `tools/qr-keychain/geometry.js` **(done)** | `loops.js`: six styles built with 2D polygon booleans (`shared/js/boolean2d.js`). |
 | `pages/3_*` | Keychain UI | `tools/qr-keychain/` **(done)** | |
 | `pages/2_*` | Stand UI | `tools/qr-stand/index.html` | Copy `tools/qr-keychain/` (same QR controls). Shared page CSS is `assets/tool.css`. |
 | `card_utils.py`, `extract_*.py`, `photo_to_svg.py` | Invite photo -> layers/SVG | `tools/wedding-invite-3d/` | Deskew + border detection used OpenCV; options are opencv.js (large, WASM) or a simpler manual-corners UI. `shared/js/image-trace.js` already covers the vectorising. |

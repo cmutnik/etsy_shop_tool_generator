@@ -7,7 +7,9 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import * as THREE from 'three';
 import jsQR from 'jsqr';
-import { buildKeychain, loopOutline } from '../tools/qr-keychain/geometry.js';
+import { buildKeychain } from '../tools/qr-keychain/geometry.js';
+import { loopFootprint, loopWall, LOOP_STYLES } from '../tools/qr-keychain/loops.js';
+import { signedArea, pointInPoly } from '../shared/js/geometry2d.js';
 import { qrMatrix, gridRects, rasterizeTopDown, rasterizeBottomUp } from '../shared/js/qr-plate.js';
 import { export3MF, collectMesh } from '../shared/js/export.js';
 import { assertWatertight } from './helpers.mjs';
@@ -68,14 +70,83 @@ test('all parts are watertight, sit on the bed, and the hole is open', () => {
       }
 });
 
-test('the loop outline is a closed simple shape clockwise-over-the-top with the neck inside the circle', () => {
-  for (const neckWidth of [4, 10, 15.9, 16, 20]) {
-    const { pts } = loopOutline({ loopDiameter: 16, neckWidth, neckHeight: 2 });
-    const ys = pts.map(p => p[1]), xs = pts.map(p => p[0]);
-    assert.ok(Math.abs(Math.max(...ys) - (2 + 16)) < 1e-6, `top ${Math.max(...ys)} @${neckWidth}`);
-    assert.ok(Math.abs(Math.min(...ys) + 0.2) < 1e-9);
-    assert.ok(Math.max(...xs) <= Math.max(8, neckWidth / 2) + 1e-9);
+const STYLE_OPTS = { size: 16, holeDiameter: 5.5, slotLength: 14, neckWidth: 10, neckHeight: 2, plateWidth: 38 };
+const inside = (g, pt) => pointInPoly(pt, g.outer) && !g.holes.some(h => pointInPoly(pt, h));
+
+test('every loop style: one solid piece with one open hole, reaching the expected height', () => {
+  const expectedHeight = { round: 18, 'rounded-square': 18, hexagon: 2 + Math.sqrt(3) * 8, teardrop: 2 + 8 + 16, 'lanyard-slot': 18, header: 16 };
+  for (const { id } of LOOP_STYLES)
+    for (const neckWidth of [4, 10, 20])
+      for (const sign of [1, -1]) {
+        const fp = loopFootprint({ ...STYLE_OPTS, style: id, neckWidth, sign });
+        assert.equal(fp.groups.length, 1, `${id} @${neckWidth}: one piece`);
+        const g = fp.groups[0];
+        assert.equal(g.holes.length, 1, `${id}: one hole`);
+        // the hole is genuinely empty (the neck did not fill it) and the material around it is solid
+        assert.ok(!inside(g, fp.holeCentre), `${id} @${neckWidth}: hole centre must be open`);
+        const [hx, hy] = fp.holeCentre;
+        assert.ok(inside(g, [hx, hy + sign * (5.5 / 2 + 1)]) || id === 'lanyard-slot', `${id}: material just above the hole`);
+        // the shape starts just inside the plate edge and reaches the expected distance beyond it
+        const ys = g.outer.map(p => p[1] * sign);
+        assert.ok(Math.abs(Math.min(...ys) + 0.2) < 1e-6, `${id}: sunk into the plate by 0.2`);
+        assert.ok(Math.abs(Math.max(...ys) - expectedHeight[id]) < 1e-6, `${id} @${neckWidth}: height ${Math.max(...ys)} vs ${expectedHeight[id]}`);
+        assert.ok(Math.abs(fp.height - expectedHeight[id]) < 1e-6, `${id}: reported height`);
+      }
+});
+
+test('every loop style builds into watertight meshes, scans, and keeps the plate centred', () => {
+  for (const loopStyle of LOOP_STYLES.map(s => s.id))
+    for (const mode of ['raised', 'indented'])
+      for (const loopPosition of ['above', 'below'])
+        for (const neckWidth of [4, 10, 20, 28]) {
+        const r = buildKeychain({ ...base, loopStyle, mode, loopPosition, neckWidth, backDepth: 0 });
+        r.group.children.forEach(m => assertWatertight(m, assert));
+        assert.equal(scan(r, mode), base.data, `${loopStyle}/${mode}/${loopPosition}/${neckWidth}`);
+        const box = new THREE.Box3().setFromObject(r.group);
+        assert.ok(Math.abs(box.min.z) < 1e-6);
+        assert.equal(r.info.loopStyle, loopStyle);
+      }
+});
+
+test('loop styles: footprint dimensions and the hole stay inside the part', () => {
+  const dims = style => { const r = buildKeychain({ ...base, loopStyle: style }); return r.info; };
+  const P = dims('round').plateSize;
+  assert.ok(Math.abs(dims('round').depth - (P + 18)) < 0.02);
+  assert.ok(Math.abs(dims('rounded-square').depth - (P + 18)) < 0.02);
+  assert.ok(Math.abs(dims('hexagon').depth - (P + 2 + Math.sqrt(3) * 8)) < 0.02);
+  assert.ok(Math.abs(dims('teardrop').depth - (P + 26)) < 0.02);
+  assert.ok(Math.abs(dims('header').depth - (P + 16)) < 0.02);
+  assert.ok(Math.abs(dims('header').width - P) < 0.02, 'header is exactly as wide as the plate');
+  // lanyard slot is wider than the round loop but narrower than the plate here
+  assert.ok(dims('lanyard-slot').width <= P + 0.02);
+});
+
+test('lanyard slot: hole is a slot of the requested length and height', () => {
+  const fp = loopFootprint({ ...STYLE_OPTS, style: 'lanyard-slot', slotLength: 20 });
+  const hole = fp.groups[0].holes[0];
+  const xs = hole.map(p => p[0]), ys = hole.map(p => p[1]);
+  assert.ok(Math.abs(Math.max(...xs) - Math.min(...xs) - 20) < 1e-6);
+  assert.ok(Math.abs(Math.max(...ys) - Math.min(...ys) - 5.5) < 1e-6);
+  // same wall all round: outer stadium is 20 + (16 - 5.5) wide
+  const ox = fp.groups[0].outer.map(p => p[0]);
+  assert.ok(Math.abs(Math.max(...ox) - Math.min(...ox) - (20 + 10.5)) < 1e-6);
+});
+
+test('loop wall rule applies to every style', () => {
+  assert.ok(Math.abs(loopWall({ style: 'round', size: 16, holeDiameter: 5.5 }) - 5.25) < 1e-9);
+  assert.ok(Math.abs(loopWall({ style: 'hexagon', size: 16, holeDiameter: 5.5 }) - (Math.sqrt(3) * 4 - 2.75)) < 1e-9);
+  for (const { id } of LOOP_STYLES) {
+    assert.throws(() => buildKeychain({ ...base, loopStyle: id, loopDiameter: 8, holeDiameter: 5.5 }), /at least 2\.5 mm of wall/, id);
+    assert.doesNotThrow(() => buildKeychain({ ...base, loopStyle: id }));
   }
+  assert.throws(() => buildKeychain({ ...base, loopStyle: 'heart' }), /Unknown loop style/);
+});
+
+test('default style is the round ring, unchanged', () => {
+  const a = buildKeychain(base), b = buildKeychain({ ...base, loopStyle: 'round' });
+  assert.equal(a.info.loopStyle, 'round');
+  assert.equal(a.info.triangles, b.info.triangles);
+  assert.ok(Math.abs(a.info.depth - (a.info.plateSize + 18)) < 0.02);
 });
 
 test('invalid input gives readable errors', () => {
@@ -291,4 +362,13 @@ test('back engraving: 3MF keeps plate=slot 1, QR=slot 2 with a back layer', asyn
     assert.match(cfg, /value="Plate"\/>\s*<metadata key="extruder" value="1"/);
     assert.match(cfg, /value="QR code"\/>\s*<metadata key="extruder" value="2"/);
   }
+});
+
+test('every loop style also works with back engraving in both modes', () => {
+  for (const loopStyle of LOOP_STYLES.map(s => s.id))
+    for (const mode of ['raised', 'indented']) {
+      const r = buildKeychain({ ...base, loopStyle, mode, thickness: 4, backDepth: 0.8, loopPosition: 'below' });
+      r.group.children.forEach(m => assertWatertight(m, assert));
+      assert.equal(scan(r, mode), base.data, `${loopStyle}/${mode} front`);
+    }
 });

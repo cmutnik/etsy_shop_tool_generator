@@ -14,7 +14,8 @@
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
       "qrcode-generator": "https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.mjs",
-      "jsqr": "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm"
+      "jsqr": "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm",
+      "polygon-clipping": "https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm"
     }
   }
   </script>
@@ -72,17 +73,24 @@
 
       <fieldset>
         <legend>Keyring loop</legend>
+        <label>Loop style
+          <select id="loopStyle"></select>
+        </label>
         <div class="row">
           <label>Loop position
             <select id="loopPosition"><option value="above">Above the code</option><option value="below">Below the code</option></select>
           </label>
-          <label>Loop diameter (mm) <input type="number" id="loopDiameter" value="16" min="10" max="25" step="0.5"></label>
+          <label><span id="loopSizeLabel">Loop size (mm)</span> <input type="number" id="loopDiameter" value="16" min="10" max="25" step="0.5"></label>
         </div>
         <div class="row">
-          <label>Split-ring hole (mm) <input type="number" id="holeDiameter" value="5.5" min="3" max="12" step="0.5"></label>
-          <label>Neck width (mm) <input type="number" id="neckWidth" value="10" min="4" max="20" step="1"></label>
+          <label>Hole diameter (mm) <input type="number" id="holeDiameter" value="5.5" min="3" max="12" step="0.5"></label>
+          <label id="slotRow">Slot length (mm) <input type="number" id="slotLength" value="14" min="6" max="30" step="1"></label>
         </div>
-        <label>Neck height (mm) <input type="number" id="neckHeight" value="2" min="0" max="8" step="0.5"></label>
+        <div class="row" id="neckRow">
+          <label>Neck width (mm) <input type="number" id="neckWidth" value="10" min="4" max="20" step="1"></label>
+          <label>Neck height (mm) <input type="number" id="neckHeight" value="2" min="0" max="8" step="0.5"></label>
+        </div>
+        <small class="muted" id="loopNote"></small>
       </fieldset>
 
       <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF (2 parts)</button></div>
