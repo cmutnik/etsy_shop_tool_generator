@@ -11,7 +11,7 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [3D Stamp Generator](tools/stamp/) | live | Text, logo and border stamps as FDM-ready STL / 3MF |
 | [Image Prep](tools/image-prep/) | live | Pictures to black and white, or to SVG line art, ready for the stamp generator |
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
-| [QR Code Stand](tools/qr-stand/) | planned | Embossed QR plate plus a slotted base, optional icon/title banner |
+| [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
 | [3D Wedding Invite](tools/wedding-invite-3d/) | planned | Invitation photo or SVG to a layered 3D print |
 | STL / 3MF modifier | idea | Scale, split, add text or hanging holes to an existing model |
 
@@ -25,6 +25,12 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Cut-out and background removal:** remove a plain, gradient or evenly lit background (auto colour, or click to pick), keep same-coloured areas inside the subject, soften or shrink the edge. Download a transparent PNG, or use it as the first step for any other output.
 - **One click to the stamp generator:** sends the result over as the stamp's logo ("Keep the picture's frame" keeps colour layers registered).
 - Runs offline in the browser with no external libraries; the picture never leaves your computer.
+
+### QR Code Stand
+
+- A QR plate (raised or engraved) with an optional **brand icon** (Instagram, Facebook, TikTok, Etsy, Pinterest, X) and/or a **title** in your choice of font, above or below the code, plus a separate **slotted base** that holds the plate standing up at an adjustable lean.
+- A blank tab at the bottom of the plate keeps the slot clear of the code and the banner. Slot clearance is adjustable for your printer; slots that do not fit the base are refused with a message.
+- Previews of the plate, the base and the **assembled** stand, an in-page scan check, and downloads as plate STL, plate 3MF (plate and artwork as two parts for two colours) and base STL.
 
 ### QR Code Keychain
 

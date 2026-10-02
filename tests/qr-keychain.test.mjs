@@ -312,12 +312,12 @@ test('back engraving is coloured in: looking up at the underside, the pockets sh
 
 test('back engraving: the loop is layered like the plate (light on the bed, dark, light top) in engraved mode', () => {
   const r = buildKeychain({ ...base, mode: 'indented', thickness: 4, backDepth: 0.8 });
-  const loop = r.meshes.filter(m => m.geometry.type === 'ExtrudeGeometry');
+  const loop = r.meshes.filter(m => m.userData.loop);
   const layers = loop.map(m => { m.geometry.computeBoundingBox(); return [m.name, +m.geometry.boundingBox.min.z.toFixed(3), +m.geometry.boundingBox.max.z.toFixed(3)]; }).sort((a, b) => a[1] - b[1]);
   assert.deepEqual(layers, [['base', 0, 0.8], ['qr', 0.8, 3.6], ['base', 3.4, 4]]);
   loop.forEach(m => assertWatertight(m, assert));
   // without back engraving the loop's bed layer stays dark, as before
-  const plain = buildKeychain({ ...base, mode: 'indented', thickness: 4 }).meshes.filter(m => m.geometry.type === 'ExtrudeGeometry');
+  const plain = buildKeychain({ ...base, mode: 'indented', thickness: 4 }).meshes.filter(m => m.userData.loop);
   assert.deepEqual(plain.map(m => m.name).sort(), ['base', 'qr']);
 });
 
@@ -524,7 +524,7 @@ test('rounded corners: the far corners are cut with an arc concentric with the Q
 test('rounded corners: plate area is exactly the square minus two quarter-circle corners', () => {
   const r = buildKeychain({ ...base, loopStyle: 'header', roundBottomCorners: true });
   const P = r.info.plateSize, m = base.margin;
-  const slab = r.meshes.find(x => x.name === 'base' && x.geometry.type === 'ExtrudeGeometry' && !x.userData.back);
+  const slab = r.meshes.find(x => x.name === 'base' && x.geometry.type !== 'BoxGeometry' && !x.userData.back);
   const pos = slab.geometry.attributes.position, idx = slab.geometry.index;
   let vol = 0;
   const n = idx ? idx.count : pos.count, at = i => (idx ? idx.getX(i) : i);
