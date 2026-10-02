@@ -13,6 +13,7 @@ import { loopFootprint, loopWall, loopStyle, MIN_WALL, OVERLAP } from './loops.j
  * @param {object} o
  *  data, errorCorrection ('L'|'M'|'Q'|'H'), module, margin, mode ('raised'|'indented'), thickness, depth,
  *  backDepth (mm, 0 = off): also engrave the code, mirrored, into the underside
+ *  roundBottomCorners (bool): round the two plate corners farthest from the loop (radius = the quiet zone)
  *  loopStyle ('round'|'rounded-square'|'hexagon'|'teardrop'|'lanyard-slot'|'header', default 'round'; see loops.js),
  *  loopPosition ('above'|'below'), loopDiameter (the loop's size: diameter, side, height... depending on the style),
  *  holeDiameter, slotLength (lanyard-slot), neckWidth, neckHeight, baseColor, qrColor
@@ -43,11 +44,13 @@ export function buildKeychain(o) {
     base: new THREE.MeshStandardMaterial({ color: new THREE.Color(o.baseColor), roughness: 0.6 }),
     qr: new THREE.MeshStandardMaterial({ color: new THREE.Color(o.qrColor), roughness: 0.6 }),
   };
-  const plate = buildQrPlate({ matrix, module: o.module, margin: o.margin, thickness: o.thickness, depth: o.depth, mode: o.mode, materials, backDepth: back });
+  const sign = o.loopPosition === 'below' ? -1 : 1;
+  // "bottom" = away from the loop: the y = 0 corners when the loop is above, the y = size corners when it is below
+  const roundFar = o.roundBottomCorners ? (sign > 0 ? 'bottom' : 'top') : null;
+  const plate = buildQrPlate({ matrix, module: o.module, margin: o.margin, thickness: o.thickness, depth: o.depth, mode: o.mode, materials, backDepth: back, roundFar });
   const P = plate.size, T = o.thickness;
 
   // loop, split at the colour-change height in indented mode so the preview matches the print
-  const sign = o.loopPosition === 'below' ? -1 : 1;
   const footprint = loopFootprint({
     style, size: o.loopDiameter, holeDiameter: o.holeDiameter, slotLength: o.slotLength ?? 14,
     neckWidth: o.neckWidth, neckHeight: o.neckHeight, plateWidth: P, sign,
@@ -69,6 +72,7 @@ export function buildKeychain(o) {
   for (const [name, geo] of loopParts) {
     const m = new THREE.Mesh(geo, materials[name]);
     m.name = name;
+    m.userData.loop = true;
     plate.meshes.push(m);
   }
 
@@ -105,6 +109,7 @@ export function buildKeychain(o) {
       filamentChangeZs: plate.filamentChangeZs,
       backDepth: back,
       loopStyle: style,
+      roundedCorners: !!roundFar,
       holeCentre: footprint.holeCentre,
       warnings,
     },

@@ -11,7 +11,8 @@ assets/style.css            site-wide look & feel (light/dark)
 assets/tool.css             layout + controls shared by tool pages
 shared/js/                  code used by more than one tool
   geometry2d.js             "groups" ({outer, holes}) -> THREE.Shape, outline shapes, extrude, simplify
-  boolean2d.js              2D polygon union/difference (polygon-clipping), circle / rounded-rectangle rings, corner fillets, collinear-point cleanup
+  rings.js                  dependency-free ring helpers: circle / rounded-rectangle rings, corner fillets, collinear-point cleanup
+  boolean2d.js              2D polygon union/difference (polygon-clipping); re-exports rings.js. Import rings.js directly if you do not need booleans, so the page does not have to load polygon-clipping
   text-layout.js            opentype.js font + text -> groups
   svg-import.js             SVG text -> groups
   image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares

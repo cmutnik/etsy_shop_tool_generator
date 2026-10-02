@@ -475,3 +475,94 @@ test('header: overall size follows the shape', () => {
   assert.ok(Math.abs(depth('triangle-left') - (P + 16)) < 0.02);
   assert.ok(Math.abs(depth('triangle-right') - (P + 16)) < 0.02);
 });
+
+// ---- rounded plate corners (the two corners away from the loop) ----
+/** Vertices of the plate meshes (everything except the loop's extruded shapes) in plate coordinates. */
+function plateVertices(r) {
+  const out = [];
+  for (const m of r.meshes) {
+    if (m.userData.loop) continue;
+    const pos = m.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) out.push([pos.getX(i), pos.getY(i), pos.getZ(i)]);
+  }
+  return out;
+}
+
+test('rounded corners: the far corners are cut with an arc concentric with the QR corner; the near corners stay square', () => {
+  const m = base.margin;
+  for (const loopPosition of ['above', 'below'])
+    for (const mode of ['raised', 'indented']) {
+      const plain = buildKeychain({ ...base, mode, loopPosition, loopStyle: 'header' });
+      const round = buildKeychain({ ...base, mode, loopPosition, loopStyle: 'header', roundBottomCorners: true });
+      const P = round.info.plateSize;
+      assert.equal(round.info.roundedCorners, true);
+      assert.equal(plain.info.roundedCorners, false);
+      const farY = loopPosition === 'above' ? 0 : P;                     // the edge away from the loop
+      const nearY = P - farY;
+      const verts = plateVertices(round);
+      const nearCorner = (v, x) => Math.abs(v[0] - x) < 0.02 && Math.abs(v[1] - nearY) < 0.02;
+      const farCorner = (v, x) => Math.abs(v[0] - x) < 0.02 && Math.abs(v[1] - farY) < 0.02;
+      // far corners: no vertex left at the square corner, and every vertex in the corner square lies on/inside the arc
+      for (const x of [0, P]) {
+        assert.ok(!verts.some(v => farCorner(v, x)), `${loopPosition}/${mode}: square far corner at x=${x} should be gone`);
+        assert.ok(verts.some(v => nearCorner(v, x)), `${loopPosition}/${mode}: near corner at x=${x} should stay square`);
+      }
+      const inCorner = v => (v[0] < m || v[0] > P - m) && Math.abs(v[1] - farY) < m - 1e-6;
+      const cx = v => (v[0] < m ? m : P - m), cy = farY === 0 ? m : P - m;
+      for (const v of verts.filter(inCorner)) {
+        const dist = Math.hypot(v[0] - cx(v), v[1] - cy);
+        assert.ok(dist <= m + 0.02, `${loopPosition}/${mode}: vertex (${v[0].toFixed(3)},${v[1].toFixed(3)}) is ${dist.toFixed(3)} from the corner centre (limit ${m})`);
+      }
+      // the arc itself is really there: plenty of vertices at distance == margin from the centre
+      const onArc = verts.filter(v => inCorner(v) && Math.abs(Math.hypot(v[0] - cx(v), v[1] - cy) - m) < 1e-6);
+      assert.ok(onArc.length >= 20, `${loopPosition}/${mode}: ${onArc.length} arc vertices`);
+      // overall size is unchanged (the plain boxes are inflated 5 microns past the plate, the rounded strips are not)
+      assert.ok(Math.abs(round.info.width - plain.info.width) < 0.02 && Math.abs(round.info.depth - plain.info.depth) < 0.02);
+    }
+});
+
+test('rounded corners: plate area is exactly the square minus two quarter-circle corners', () => {
+  const r = buildKeychain({ ...base, loopStyle: 'header', roundBottomCorners: true });
+  const P = r.info.plateSize, m = base.margin;
+  const slab = r.meshes.find(x => x.name === 'base' && x.geometry.type === 'ExtrudeGeometry' && !x.userData.back);
+  const pos = slab.geometry.attributes.position, idx = slab.geometry.index;
+  let vol = 0;
+  const n = idx ? idx.count : pos.count, at = i => (idx ? idx.getX(i) : i);
+  for (let t = 0; t < n; t += 3) {
+    const p = [0, 1, 2].map(j => { const i = at(t + j); return [pos.getX(i), pos.getY(i), pos.getZ(i)]; });
+    vol += (p[0][0] * (p[1][1] * p[2][2] - p[1][2] * p[2][1]) - p[0][1] * (p[1][0] * p[2][2] - p[1][2] * p[2][0]) + p[0][2] * (p[1][0] * p[2][1] - p[1][1] * p[2][0])) / 6;
+  }
+  const expected = (P * P - 2 * (1 - Math.PI / 4) * m * m) * base.thickness;
+  assert.ok(Math.abs(vol - expected) / expected < 1e-3, `slab volume ${vol} vs ${expected}`);
+});
+
+test('rounded corners: every style, mode, loop position and back engraving stays watertight and scannable', () => {
+  for (const loopStyle of LOOP_STYLES.map(s => s.id))
+    for (const mode of ['raised', 'indented'])
+      for (const loopPosition of ['above', 'below'])
+        for (const backDepth of [0, 0.8]) {
+          const r = buildKeychain({ ...base, thickness: 4, loopStyle, mode, loopPosition, backDepth, roundBottomCorners: true });
+          r.group.children.forEach(m => assertWatertight(m, assert));
+          const tag = `${loopStyle}/${mode}/${loopPosition}/${backDepth}`;
+          assert.equal(scan(r, mode), base.data, `front ${tag}`);
+          if (backDepth) assert.equal(scanRaster(rasterizeBottomUp(r.meshes, r.info.plateSize, 10)), base.data, `back ${tag}`);
+        }
+});
+
+test('rounded corners: the quiet zone stays margin wide at the rounded corners (arc is concentric with the code)', () => {
+  for (const margin of [1.5, 4, 8]) {
+    const r = buildKeychain({ ...base, margin, loopStyle: 'header', roundBottomCorners: true });
+    const P = r.info.plateSize;
+    // QR's bottom-left module corner is at (margin, margin): its distance to the nearest plate outline vertex in the corner >= margin
+    const near = plateVertices(r).filter(v => v[0] < margin && v[1] < margin && v[2] < 0.01).map(v => Math.hypot(v[0] - margin, v[1] - margin));
+    assert.ok(near.length > 5);
+    assert.ok(Math.min(...near) >= margin - 0.02, `margin ${margin}: closest outline vertex ${Math.min(...near)}`);
+    assert.ok(P > 2 * margin);
+  }
+});
+
+test('rounded corners: off by default, and the geometry is identical when off', () => {
+  const a = buildKeychain({ ...base, loopStyle: 'header' }), b = buildKeychain({ ...base, loopStyle: 'header', roundBottomCorners: false });
+  assert.equal(a.info.triangles, b.info.triangles);
+  assert.equal(a.info.roundedCorners, false);
+});

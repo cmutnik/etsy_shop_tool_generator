@@ -52,6 +52,7 @@ function readParams() {
     headerShape: $('headerShape').value, lean: num('lean') / 100, rounding: num('rounding'), holeOffsetX: num('holeOffsetX'), holeOffsetY: num('holeOffsetY'),
     neckWidth: num('neckWidth'), neckHeight: num('neckHeight'),
     backDepth: $('backEngrave').checked ? num('backDepth') : 0,
+    roundBottomCorners: $('roundCorners').checked,
   };
 }
 
