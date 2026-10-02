@@ -22,6 +22,7 @@ shared/js/                  code used by more than one tool
   zip.js                    minimal zip writer (no dependencies); re-exported by export.js
   image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares
   raster-tools.js           distance transform + thin-feature detection (printability checks)
+  icons.js                  brand icon paths (Simple Icons, CC0) for the QR stand's banner
   qr-plate.js               QR matrix -> plate of boxes (raised/engraved), top-down raster for scan checks
   fonts.js                  font catalogue + loading
   viewer.js                 Three.js preview (z-up, print-bed grid, orbit controls)
@@ -32,8 +33,8 @@ tools/
   registry.json             list of tools (live / planned / idea)
   stamp/                    3D stamp generator (live); imprint.js draws the 2D preview + flags thin details
   image-prep/               picture -> black & white / SVG line art (live, no external libraries)
-  qr-keychain/              QR keychain (live)
-  qr-stand/ wedding-invite-3d/   planned - README only, see docs/ROADMAP.md
+  qr-keychain/ qr-stand/    QR keychain and QR stand (live)
+  wedding-invite-3d/        planned - README only, see docs/ROADMAP.md
 tests/                      node --test; geometry, import, export (npm test)
 docs/                       this file + roadmap
 invite2svg/                 legacy Python/Streamlit app, being ported (see roadmap); untouched
@@ -48,6 +49,14 @@ invite2svg/                 legacy Python/Streamlit app, being ported (see roadm
 - Every page starts with the shared header: `<header class="site"><a class="brand" href="../../">Etsy Shop Tools</a><nav id="toolnav" aria-label="Tools"></nav></header>` and ends with `<script type="module" src="../../shared/js/nav.js"></script>`. The links come from the registry, so a new tool shows up on every page by itself (`tests/nav.test.mjs` checks the pages and the registry).
 - Add the tool to `tools/registry.json`. Anything a second tool needs goes into `shared/js/` (don't import across `tools/`).
 - Each page repeats the import map (browsers don't allow external ones) - keep versions identical across pages.
+
+## Meshes that slice cleanly
+Every extrusion should go through `extrudeShapes()` in `shared/js/geometry2d.js`, never `new THREE.ExtrudeGeometry` directly. It
+cleans the outline (three.js arcs leave ~1e-15 mm micro-segments) and repairs the caps: the triangulator can draw a long diagonal
+past a vertex that sits exactly on it (typical when many letter bottoms share a baseline), leaving a crack with a single triangle on
+an edge. The repair splits interior cap edges at such vertices, never outline edges (those are shared with the side walls). Artwork
+from fonts and icons should also pass through a polygon union and a ~0.02 mm simplification first (`mergeArtwork()` in the stand).
+`tests/helpers.mjs` has `assertWatertight()` (closed, consistent winding, positive volume).
 
 ## Keep pages light
 A page only needs an import map entry for what its own module graph imports, so keep non-3D code free of Three.js:

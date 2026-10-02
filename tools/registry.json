@@ -16,8 +16,9 @@
   {
     "id": "qr-stand",
     "title": "QR Code Stand",
-    "description": "Embossed QR plate plus a slotted base, with optional icon and title banner.",
-    "status": "planned"
+    "description": "QR plate with optional icon and title, plus a slotted base that holds it standing up. STL and colour 3MF.",
+    "status": "live",
+    "path": "qr-stand/"
   },
   {
     "id": "qr-keychain",
