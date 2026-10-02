@@ -71,10 +71,16 @@ export function contoursToGroups(contours) {
   return [...groups.values()];
 }
 
+/**
+ * Groups -> THREE.Shape. The outer ring is forced counter-clockwise: ExtrudeGeometry only re-orients holes
+ * when it has to flip the outer ring, so a clockwise outer with a clockwise hole would extrude with
+ * inconsistent triangle winding (slicers have to repair it).
+ */
 export function groupsToShapes(groups) {
   const v = ring => ring.map(([x, y]) => new THREE.Vector2(x, y));
+  const ccw = ring => (signedArea(ring) < 0 ? ring.slice().reverse() : ring);
   return groups.map(g => {
-    const s = new THREE.Shape(v(g.outer));
+    const s = new THREE.Shape(v(ccw(g.outer)));
     for (const h of g.holes) s.holes.push(new THREE.Path(v(h)));
     return s;
   });

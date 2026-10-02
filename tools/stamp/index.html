@@ -7,6 +7,7 @@
   <link rel="icon" href="data:,">
   <title>3D Stamp Generator - Etsy Shop Tools</title>
   <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
   <link rel="stylesheet" href="stamp.css">
   <script type="importmap">
   {
@@ -23,7 +24,7 @@
     <a href="../../"><h1>Etsy Shop Tools</h1></a>
     <span>3D Stamp Generator</span>
   </header>
-  <main class="stamp-layout">
+  <main class="tool-layout">
     <section class="controls" id="controls">
       <fieldset>
         <legend>Artwork</legend>
@@ -126,6 +127,7 @@ with love</textarea>
       </fieldset>
 
       <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF</button></div>
+      <button id="download3mfParts" class="primary secondary" style="margin-top:8px" title="Face and base as two parts, assigned to filament slots 1 and 2">Download 3MF - 2 colours / materials</button>
       <div id="warnings"></div>
     </section>
 
@@ -146,10 +148,18 @@ with love</textarea>
         <summary>Printing &amp; use tips</summary>
         <ul>
           <li><b>Orientation:</b> the model is already oriented stamp-face-down. Print as-is, with <b>no supports</b>. The face is the first layer, so it comes out flat.</li>
-          <li><b>Settings:</b> 0.4 mm nozzle, 0.12-0.16 mm layers, 3+ walls, 20%+ infill. PLA or PETG both work. Leave ironing off.</li>
-          <li><b>Bed:</b> a smooth PEI sheet gives the smoothest stamp face; a textured sheet will transfer its texture to the print.</li>
-          <li><b>Mirroring:</b> the text is mirrored on the stamp face on purpose, so it stamps the right way round.</li>
-          <li><b>Ink:</b> use standard water- or pigment-based stamp ink pads. Lightly press, don't rock. If the face is bumpy, sand it flat on fine (400+) paper.</li>
+          <li><b>Mirroring:</b> the artwork is mirrored on the stamp face on purpose, so it stamps the right way round.</li>
+          <li><b>Bed:</b> a smooth PEI sheet gives the smoothest stamp face; a textured sheet transfers its texture to the print.</li>
+          <li><b>Which material?</b>
+            <ul>
+              <li><b>PLA / PETG (rigid):</b> easiest to print and holds fine detail well. Good for most stamps, but the face doesn't give, so it needs an even press.</li>
+              <li><b>TPU (flexible, about 95A):</b> the face conforms to the paper, so ink transfers more evenly and edges chip less. Usually the better face material. Don't print the whole stamp in it: a floppy base and handle flex when you press, so the face doesn't land flat.</li>
+              <li><b>Best of both:</b> a TPU face on a rigid base. Download <b>3MF - 2 colours / materials</b>: the raised artwork is slot 1 (TPU) and the base and handle are slot 2 (PLA or PETG). Needs a multi-material printer. TPU and PLA bond poorly, and TPU usually holds better to PETG, so use PETG for the base if you can.</li>
+            </ul>
+          </li>
+          <li><b>General settings:</b> 0.4 mm nozzle, 0.12-0.16 mm layers, 3+ walls, 20%+ infill, ironing off.</li>
+          <li><b>Printing TPU:</b> print slowly (roughly 15-30 mm/s), use a direct-drive extruder, minimal or no retraction, and dry filament. Fine detail is harder in TPU, so keep lines and gaps to about 0.8 mm or more - more than the 0.6 mm the red highlight uses.</li>
+          <li><b>Ink:</b> standard stamp pads work. Pigment or oil-based ink grips plastic best; water-based ink can bead on a smooth, non-porous face, so wipe it with isopropyl alcohol first. Press lightly, don't rock. If a rigid face is bumpy, sand it flat on fine (400+) paper.</li>
           <li><b>Thin details:</b> anything narrower than 0.6 mm is drawn in red in the imprint preview - it may not print or may snap off. Tiny text under ~4 mm tall has the same problem.</li>
           <li><b>Logos:</b> SVG gives the cleanest result. For PNG/JPG use a high-contrast image; a transparent PNG is read by its transparency, anything else by brightness.</li>
         </ul>

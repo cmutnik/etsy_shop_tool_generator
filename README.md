@@ -9,12 +9,19 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | Tool | Status | What it does |
 |---|---|---|
 | [3D Stamp Generator](tools/stamp/) | live | Text, logo and border stamps as FDM-ready STL / 3MF |
-| [QR Code Keychain](tools/qr-keychain/) | planned | QR plate with a split-ring loop, one printable piece |
+| [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | planned | Embossed QR plate plus a slotted base, optional icon/title banner |
 | [3D Wedding Invite](tools/wedding-invite-3d/) | planned | Invitation photo or SVG to a layered 3D print |
 | STL / 3MF modifier | idea | Scale, split, add text or hanging holes to an existing model |
 
 The list shown on the home page comes from [tools/registry.json](tools/registry.json).
+
+### QR Code Keychain
+
+- Link or text to QR (error correction L/M/Q/H, module size, quiet zone), raised or engraved, with a split-ring loop above or below.
+- **Scan check:** the model's own geometry is decoded in the page, so you know the code is readable before printing.
+- **Back engraving (optional):** the same QR cut, mirrored, into the underside so it reads correctly when you flip the keychain over, with the pockets coloured in the QR colour (bridged pockets; see the tool's tips for the filament changes).
+- Two-colour output: the page shows the height for a single filament change; the 3MF carries plate and QR colours.
 
 ### 3D Stamp Generator
 
@@ -22,8 +29,8 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Shapes:** rectangle with corner radius, or circle/oval. Optional round knob or grip bar handle, and an "up" arrow on the base.
 - **Logo cleanup (PNG/JPG):** read from transparency or brightness, auto threshold, smoothing, speck removal, invert. SVG white backgrounds are dropped automatically.
 - **Previews:** a 3D view (print orientation or stamp face) and a flat imprint preview of what it leaves on paper, with details thinner than 0.6 mm highlighted in red.
-- **Print-ready output:** downloads as STL or 3MF, in millimetres. The stamp face is at z = 0, so it prints **face-down on the bed with no supports**, and the artwork is mirrored on the face so it stamps the right way round. Parts overlap slightly so slicers merge them cleanly.
-- **Suggested print settings:** 0.4 mm nozzle, 0.12-0.16 mm layers, 3+ walls, 20%+ infill, PLA or PETG, smooth PEI sheet, ironing off. Use standard water- or pigment-based stamp ink.
+- **Print-ready output:** downloads as STL, 3MF, or a **2-part 3MF** (artwork face = filament slot 1, base and handle = slot 2) for a multi-material printer, e.g. a flexible TPU face on a rigid PETG/PLA base. All in millimetres. The stamp face is at z = 0, so it prints **face-down on the bed with no supports**, and the artwork is mirrored on the face so it stamps the right way round. Parts overlap slightly so slicers merge them cleanly.
+- **Suggested print settings:** 0.4 mm nozzle, 0.12-0.16 mm layers, 3+ walls, 20%+ infill, smooth PEI sheet, ironing off. PLA/PETG are the easy rigid choices; TPU (about 95A) gives a face that conforms to the paper for more even ink transfer, but print it slowly with a direct-drive extruder, and prefer a rigid base and handle over an all-TPU stamp. The page's tips cover materials and ink in more detail.
 
 ## Run it locally
 
@@ -53,7 +60,7 @@ Enable GitHub Pages on the repo root: Settings > Pages > Deploy from branch `mai
 |---|---|
 | `index.html`, `assets/` | Home page and shared styles |
 | `tools/<name>/` | One folder per tool (`index.html`, UI wiring, and a DOM-free `geometry.js`) |
-| `shared/js/` | Code shared by tools: 2D geometry, text layout, SVG and image import, raster checks, 3D viewer, STL/3MF export |
+| `shared/js/` | Code shared by tools: 2D geometry, text layout, SVG and image import, raster checks, QR plates, 3D viewer, STL/3MF export |
 | `tests/` | `node --test` suites |
 | `docs/` | [Architecture](docs/ARCHITECTURE.md) and [roadmap](docs/ROADMAP.md) |
 | `invite2svg/` | Existing Python/Streamlit app (QR stand, keychain, wedding invite). Being ported to JavaScript here, then removed. See the [port plan](docs/ROADMAP.md#porting-the-qr-tools-from-invite2svg) |

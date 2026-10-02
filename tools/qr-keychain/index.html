@@ -1,0 +1,119 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>QR Code Keychain - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+      "qrcode-generator": "https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.mjs",
+      "jsqr": "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/+esm"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a href="../../"><h1>Etsy Shop Tools</h1></a>
+    <span>QR Code Keychain</span>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>QR code</legend>
+        <label>Link or text to encode
+          <input type="text" id="data" value="https://example.com" placeholder="https://your-shop.example.com" autocomplete="off" spellcheck="false">
+        </label>
+        <label>Error correction
+          <select id="errorCorrection">
+            <option value="L">L - smallest code</option>
+            <option value="M" selected>M - good default</option>
+            <option value="Q">Q - tolerates more wear</option>
+            <option value="H">H - densest, most robust</option>
+          </select>
+        </label>
+        <div class="row">
+          <label>Module size (mm) <input type="number" id="module" value="1.2" min="0.6" max="2.5" step="0.1"></label>
+          <label>Quiet zone (mm) <input type="number" id="margin" value="4" min="1.5" max="10" step="0.5"></label>
+        </div>
+        <small class="muted">One QR "pixel" is a module. Keychains stay pocket-sized, so modules default smaller than a stand would use. Keep the quiet zone at about 4 modules or more.</small>
+      </fieldset>
+
+      <fieldset>
+        <legend>Plate</legend>
+        <label>Artwork direction
+          <select id="mode">
+            <option value="raised">Raised (emboss)</option>
+            <option value="indented">Indented (engrave)</option>
+          </select>
+        </label>
+        <div class="row">
+          <label>Plate thickness (mm) <input type="number" id="thickness" value="3" min="2" max="6" step="0.5"></label>
+          <label>Emboss / engrave depth (mm) <input type="number" id="depth" value="0.6" min="0.2" max="1.5" step="0.1"></label>
+        </div>
+        <label class="inline"><input type="checkbox" id="backEngrave"> Also engrave the QR on the back</label>
+        <div class="row" id="backRow">
+          <label>Back engrave depth (mm) <input type="number" id="backDepth" value="0.8" min="0.4" max="2" step="0.2"></label>
+        </div>
+        <small class="muted" id="backNote">The back code is mirrored so it reads correctly when you flip the keychain over, and its pockets are coloured in the QR colour. It is cut into the side that sits on the bed, so the pockets are bridged. With an engraved front it needs only plain filament changes (light, dark, light). With a raised front the dark pocket floors share layers with the plate, so you need the 3MF and two filament slots.</small>
+        <div class="row">
+          <label>Plate colour <input type="color" id="baseColor" value="#ffffff"></label>
+          <label>QR colour <input type="color" id="qrColor" value="#111111"></label>
+        </div>
+        <small class="muted">Colours are for the preview and the colour 3MF. Two colours scan far more reliably than one.</small>
+      </fieldset>
+
+      <fieldset>
+        <legend>Keyring loop</legend>
+        <div class="row">
+          <label>Loop position
+            <select id="loopPosition"><option value="above">Above the code</option><option value="below">Below the code</option></select>
+          </label>
+          <label>Loop diameter (mm) <input type="number" id="loopDiameter" value="16" min="10" max="25" step="0.5"></label>
+        </div>
+        <div class="row">
+          <label>Split-ring hole (mm) <input type="number" id="holeDiameter" value="5.5" min="3" max="12" step="0.5"></label>
+          <label>Neck width (mm) <input type="number" id="neckWidth" value="10" min="4" max="20" step="1"></label>
+        </div>
+        <label>Neck height (mm) <input type="number" id="neckHeight" value="2" min="0" max="8" step="0.5"></label>
+      </fieldset>
+
+      <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF (2 parts)</button></div>
+      <div id="error" class="error" hidden></div>
+      <div id="warnings"></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar">
+        <button data-view="print" class="active">3D view</button>
+        <button data-view="top">Top view</button>
+        <button data-view="underside">Back view</button>
+        <span id="status" class="status"></span>
+      </div>
+      <div id="viewport"></div>
+      <div id="info" class="info"></div>
+      <div id="scan" class="scan" hidden></div>
+      <div id="scanBack" class="scan" hidden></div>
+      <details class="tips" open>
+        <summary>Printing tips</summary>
+        <ul>
+          <li><b>Orientation:</b> print flat, exactly as exported, with <b>no supports</b>. The QR is on the top surface.</li>
+          <li><b>Two colours:</b> add the filament change(s) at the height(s) shown above (in your slicer's layer slider). Raised: the dark QR is printed in the last layers. Engraved: dark below, light on top. A coloured back engraving on an engraved front adds one more change near the bed (light, then dark, then light again). A coloured back on a raised front needs the 3MF's two filament slots.</li>
+          <li><b>Back engraving:</b> the pockets open onto the print bed, so their ceilings (the dark floors you see) are printed as bridges. Keep them shallow (about 0.6-1 mm). A smooth PEI sheet leaves the back face clean.</li>
+          <li><b>Settings:</b> 0.4 mm nozzle, 0.12-0.2 mm layers, 3+ walls. Make the QR layers a whole number of layers thick for the cleanest contrast.</li>
+          <li><b>Scanning:</b> always test-scan the printed keychain. If it is unreliable, enlarge the modules, raise the error correction, or use a more contrasting pair of colours.</li>
+          <li><b>3MF in Orca / Bambu / PrusaSlicer:</b> the colour 3MF contains the plate and the QR as two parts, already assigned to filament slots 1 and 2. Load filaments into those two slots (plate colour in slot 1, QR colour in slot 2). The colours you pick here are only a preview; the slicer uses whatever filament is in each slot. Use the STL plus a single filament change if your printer has one extruder.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="keychain.js"></script>
+</body>
+</html>

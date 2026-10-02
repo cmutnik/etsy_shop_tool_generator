@@ -42,11 +42,12 @@ export function createViewer(container) {
       current = obj;
       if (obj) scene.add(obj);
     },
-    /** view: 'print' (from above) or 'underside' (from below). size = { width, depth, height } in mm. */
+    /** view: 'print' (angled from above), 'top' (straight down) or 'underside'. size = { width, depth, height } in mm. */
     setView(view, size) {
       const d = Math.max(size.width, size.depth, size.height) * 2.4;
       controls.target.set(0, 0, size.height / 2);
-      if (view === 'print') camera.position.set(0, -d * 0.7, d * 0.75 + size.height / 2);
+      if (view === 'top') camera.position.set(0, -d * 0.02, d * 0.9);
+      else if (view === 'print') camera.position.set(0, -d * 0.7, d * 0.75 + size.height / 2);
       else camera.position.set(0, d * 0.25, -d + size.height / 2);
       controls.update();
     },
