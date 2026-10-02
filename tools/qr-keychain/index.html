@@ -58,6 +58,11 @@
           <label>Plate thickness (mm) <input type="number" id="thickness" value="3" min="2" max="6" step="0.5"></label>
           <label>Emboss / engrave depth (mm) <input type="number" id="depth" value="0.6" min="0.2" max="1.5" step="0.1"></label>
         </div>
+        <label class="inline"><input type="checkbox" id="backEngrave"> Also engrave the QR on the back</label>
+        <div class="row" id="backRow">
+          <label>Back engrave depth (mm) <input type="number" id="backDepth" value="0.8" min="0.4" max="2" step="0.2"></label>
+        </div>
+        <small class="muted" id="backNote">The back code is mirrored so it reads correctly when you flip the keychain over. It is cut into the side that sits on the bed, so its pockets are bridged. It is not two-colour: it shows by shading, so use it as a bonus, not the main code.</small>
         <div class="row">
           <label>Plate colour <input type="color" id="baseColor" value="#ffffff"></label>
           <label>QR colour <input type="color" id="qrColor" value="#111111"></label>
@@ -89,16 +94,19 @@
       <div class="viewbar">
         <button data-view="print" class="active">3D view</button>
         <button data-view="top">Top view</button>
+        <button data-view="underside">Back view</button>
         <span id="status" class="status"></span>
       </div>
       <div id="viewport"></div>
       <div id="info" class="info"></div>
       <div id="scan" class="scan" hidden></div>
+      <div id="scanBack" class="scan" hidden></div>
       <details class="tips" open>
         <summary>Printing tips</summary>
         <ul>
           <li><b>Orientation:</b> print flat, exactly as exported, with <b>no supports</b>. The QR is on the top surface.</li>
           <li><b>Two colours:</b> add one filament change at the height shown above (in your slicer's layer slider). Raised: the dark QR is printed in the last layers. Engraved: dark below, light on top.</li>
+          <li><b>Back engraving:</b> the pockets open onto the print bed, so the layers above them are printed as bridges. Keep them shallow (about 0.6-1 mm). A smooth PEI sheet leaves the back face clean.</li>
           <li><b>Settings:</b> 0.4 mm nozzle, 0.12-0.2 mm layers, 3+ walls. Make the QR layers a whole number of layers thick for the cleanest contrast.</li>
           <li><b>Scanning:</b> always test-scan the printed keychain. If it is unreliable, enlarge the modules, raise the error correction, or use a more contrasting pair of colours.</li>
           <li><b>3MF in Orca / Bambu / PrusaSlicer:</b> the colour 3MF contains the plate and the QR as two parts, already assigned to filament slots 1 and 2. Load filaments into those two slots (plate colour in slot 1, QR colour in slot 2). The colours you pick here are only a preview; the slicer uses whatever filament is in each slot. Use the STL plus a single filament change if your printer has one extruder.</li>

@@ -65,18 +65,41 @@ function box(x0, y0, x1, y1, z0, z1, name, mat) {
  * Build the QR plate.
  * @param {object} o
  *  matrix, module (mm per module), margin (mm quiet zone), thickness (plate, mm), depth (emboss/engrave, mm),
- *  mode 'raised'|'indented', materials { base, qr }
+ *  mode 'raised'|'indented', materials { base, qr },
+ *  backDepth (mm, optional): also engrave the code into the underside, mirrored so it reads correctly when
+ *  the keychain is flipped over (like turning a page: left/right swap, top stays top)
  * @returns {{ meshes: THREE.Mesh[], size: number, filamentChangeZ: number }}
  *  Meshes are named 'qr' (the dark colour) or 'base' (the light colour), so a layer-based colour change
- *  at filamentChangeZ reproduces the preview. Plate occupies [0,size]^2.
+ *  at filamentChangeZ reproduces the preview. Plate occupies [0,size]^2. Meshes forming the back
+ *  engraving have userData.back = true.
  */
-export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d, mode, materials }) {
+export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d, mode, materials, backDepth = 0 }) {
   const n = matrix.length;
   const P = n * m + 2 * margin;
   const cell = rect => [margin + rect.x0 * m, P - margin - rect.y1 * m, margin + rect.x1 * m, P - margin - rect.y0 * m];
   const meshes = [];
+  const z0 = backDepth > 0 ? backDepth : 0; // main slab starts above the back engraving layer
+
+  // back layer: the plate material in [0, backDepth] with the (mirrored) modules left open as pockets.
+  // It sits on the bed, so the pockets are open to the bed and their ceilings are bridged when printing.
+  const backLayer = name => {
+    if (!(backDepth > 0)) return;
+    const add = (x0, y0, x1, y1) => {
+      const mesh = box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, 0, backDepth + OVERLAP, name, materials);
+      mesh.userData.back = true;
+      meshes.push(mesh);
+    };
+    if (margin > 0) {
+      add(0, 0, P, margin); add(0, P - margin, P, P);
+      add(0, margin, margin, P - margin); add(P - margin, margin, P, P - margin);
+    }
+    const mirrored = matrix.map(row => row.slice().reverse());
+    for (const r of gridRects(mirrored, v => !v)) add(...cell(r));
+  };
+
   if (mode === 'raised') {
-    meshes.push(box(0, 0, P, P, 0, T, 'base', materials));
+    meshes.push(box(0, 0, P, P, z0, T, 'base', materials));
+    backLayer('base');
     for (const r of gridRects(matrix, v => v)) {
       const [x0, y0, x1, y1] = cell(r);
       meshes.push(box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, T - OVERLAP, T + d, 'qr', materials));
@@ -84,7 +107,8 @@ export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d
     return { meshes, size: P, filamentChangeZ: T };
   }
   // indented: dark lower slab, light top layer of thickness d with the modules left open
-  meshes.push(box(0, 0, P, P, 0, T - d + OVERLAP, 'qr', materials));
+  meshes.push(box(0, 0, P, P, z0, T - d + OVERLAP, 'qr', materials));
+  backLayer('qr');
   const zLo = T - d;
   const top = (x0, y0, x1, y1) => meshes.push(box(x0 - EPS, y0 - EPS, x1 + EPS, y1 + EPS, zLo, T, 'base', materials));
   if (margin > 0) {
@@ -102,7 +126,7 @@ export function buildQrPlate({ matrix, module: m, margin, thickness: T, depth: d
 export function rasterizeTopDown(meshes, mode, size, pxPerMm = 10) {
   const w = Math.ceil(size * pxPerMm), h = w;
   const data = new Uint8ClampedArray(w * h * 4).fill(255);
-  const boxes = meshes.filter(m => m.name === (mode === 'raised' ? 'qr' : 'base')).map(m => {
+  const boxes = meshes.filter(m => !m.userData.back && m.name === (mode === 'raised' ? 'qr' : 'base')).map(m => {
     m.geometry.computeBoundingBox();
     return m.geometry.boundingBox;
   });
@@ -116,5 +140,24 @@ export function rasterizeTopDown(meshes, mode, size, pxPerMm = 10) {
     const dark = mode === 'raised' ? covered[i] : !covered[i];
     if (dark) data.fill(0, i * 4, i * 4 + 3);
   }
+  return { data, width: w, height: h };
+}
+
+/**
+ * Rasterise the underside as seen when the keychain is flipped over (left/right swapped, top stays top):
+ * pockets of the back engraving are the dark modules. Same return shape as rasterizeTopDown.
+ */
+export function rasterizeBottomUp(meshes, size, pxPerMm = 10) {
+  const w = Math.ceil(size * pxPerMm), h = w;
+  const data = new Uint8ClampedArray(w * h * 4).fill(255);
+  const covered = new Uint8Array(w * h);
+  for (const m of meshes.filter(m => m.userData.back)) {
+    m.geometry.computeBoundingBox();
+    const b = m.geometry.boundingBox;
+    const x0 = Math.max(0, Math.round((size - b.max.x) * pxPerMm)), x1 = Math.min(w, Math.round((size - b.min.x) * pxPerMm)); // mirrored in x
+    const y0 = Math.max(0, Math.round((size - b.max.y) * pxPerMm)), y1 = Math.min(h, Math.round((size - b.min.y) * pxPerMm));
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) covered[y * w + x] = 1;
+  }
+  for (let i = 0; i < w * h; i++) if (!covered[i]) data.fill(0, i * 4, i * 4 + 3);
   return { data, width: w, height: h };
 }

@@ -43,6 +43,7 @@ export function loopOutline({ loopDiameter, neckWidth, neckHeight, sign = 1 }) {
 /**
  * @param {object} o
  *  data, errorCorrection ('L'|'M'|'Q'|'H'), module, margin, mode ('raised'|'indented'), thickness, depth,
+ *  backDepth (mm, 0 = off): also engrave the code, mirrored, into the underside
  *  loopPosition ('above'|'below'), loopDiameter, holeDiameter, neckWidth, neckHeight, baseColor, qrColor
  * @returns {{ group: THREE.Group, info: object }}
  * @throws {Error} with a user-facing message for invalid input
@@ -53,12 +54,19 @@ export function buildKeychain(o) {
   if (wall < MIN_WALL) throw new Error(`Loop diameter must leave at least ${MIN_WALL} mm of wall around the hole to stay sturdy (now ${wall.toFixed(1)} mm).`);
   if (o.mode === 'indented' && o.depth >= o.thickness - 0.4) throw new Error('Engrave depth must be at least 0.4 mm less than the plate thickness.');
 
+  const back = o.backDepth || 0;
+  if (back) {
+    if (back < 0.4) throw new Error('Back engraving must be at least 0.4 mm deep (2+ layers) to be visible.');
+    // keep at least 0.8 mm of solid plate between the back pockets and the front features
+    const front = o.mode === 'indented' ? o.depth : 0;
+    if (back + front > o.thickness - 0.8) throw new Error(`Back engraving is too deep for this plate: depth ${back} mm${front ? ` + front engraving ${front} mm` : ''} must leave at least 0.8 mm of plate (thickness ${o.thickness} mm). Make the plate thicker or the engraving shallower.`);
+  }
   const matrix = qrMatrix(o.data, o.errorCorrection);
   const materials = {
     base: new THREE.MeshStandardMaterial({ color: new THREE.Color(o.baseColor), roughness: 0.6 }),
     qr: new THREE.MeshStandardMaterial({ color: new THREE.Color(o.qrColor), roughness: 0.6 }),
   };
-  const plate = buildQrPlate({ matrix, module: o.module, margin: o.margin, thickness: o.thickness, depth: o.depth, mode: o.mode, materials });
+  const plate = buildQrPlate({ matrix, module: o.module, margin: o.margin, thickness: o.thickness, depth: o.depth, mode: o.mode, materials, backDepth: back });
   const P = plate.size, T = o.thickness;
 
   // loop, split at the colour-change height in indented mode so the preview matches the print
@@ -93,6 +101,7 @@ export function buildKeychain(o) {
   if (o.module < 0.8) warnings.push(`Module size ${o.module} mm is below 2 nozzle widths (0.8 mm) - the code may not print cleanly or scan.`);
   if (o.margin < 2 * o.module) warnings.push('Quiet zone is under 2 modules wide - many scanners need about 4 modules of blank border.');
   if (o.depth < 0.4) warnings.push('Emboss/engrave depth under 0.4 mm gives weak contrast; use at least 2 layers.');
+  if (back && back > 1.2) warnings.push('Back engraving deeper than ~1.2 mm means longer bridges over the pockets; if the ceilings sag, reduce the depth or raise the module size.');
   if (o.holeDiameter < 5) warnings.push('Hole is under 5 mm - a standard split ring may not thread through.');
   if (o.data === 'https://example.com') warnings.push('This is the sample link - replace it with your own before printing.');
 
@@ -110,6 +119,7 @@ export function buildKeychain(o) {
       plateSize: P,
       triangles: tris,
       filamentChangeZ: plate.filamentChangeZ,
+      backDepth: back,
       warnings,
     },
   };

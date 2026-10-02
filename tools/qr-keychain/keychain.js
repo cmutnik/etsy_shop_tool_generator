@@ -2,7 +2,7 @@
 import jsQR from 'jsqr';
 import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
-import { rasterizeTopDown } from '../../shared/js/qr-plate.js';
+import { rasterizeTopDown, rasterizeBottomUp } from '../../shared/js/qr-plate.js';
 import { buildKeychain } from './geometry.js';
 
 const $ = id => document.getElementById(id);
@@ -24,6 +24,7 @@ function readParams() {
     baseColor: $('baseColor').value, qrColor: $('qrColor').value,
     loopPosition: $('loopPosition').value, loopDiameter: num('loopDiameter'), holeDiameter: num('holeDiameter'),
     neckWidth: num('neckWidth'), neckHeight: num('neckHeight'),
+    backDepth: $('backEngrave').checked ? num('backDepth') : 0,
   };
 }
 
@@ -37,13 +38,14 @@ function rebuild() { clearTimeout(timer); timer = setTimeout(build, 120); }
 
 function build() {
   const p = readParams();
-  if ([p.module, p.margin, p.thickness, p.depth, p.loopDiameter, p.holeDiameter, p.neckWidth, p.neckHeight].some(Number.isNaN)) return;
+  if ([p.module, p.margin, p.thickness, p.depth, p.loopDiameter, p.holeDiameter, p.neckWidth, p.neckHeight, p.backDepth].some(Number.isNaN)) return;
   let res;
   try {
     res = buildKeychain(p);
   } catch (e) {
     showError(e.message);
     $('scan').hidden = true;
+    $('scanBack').hidden = true;
     return;
   }
   showError('');
@@ -57,18 +59,27 @@ function build() {
     + `  |  filament change at Z = ${i.filamentChangeZ.toFixed(2)} mm`;
   $('warnings').replaceChildren(...i.warnings.map(t => Object.assign(document.createElement('div'), { textContent: t })));
 
-  // scan check: look straight down at the generated geometry and try to decode it
-  const img = rasterizeTopDown(res.meshes, p.mode, i.plateSize, 10);
-  const pad = 40, w = img.width + 2 * pad;
-  const data = new Uint8ClampedArray(w * w * 4).fill(255);
-  for (let y = 0; y < img.height; y++) data.set(img.data.subarray(y * img.width * 4, (y + 1) * img.width * 4), ((y + pad) * w + pad) * 4);
-  const code = jsQR(data, w, w);
-  const el = $('scan');
-  el.hidden = false;
-  el.className = 'scan ' + (code && code.data === p.data ? 'ok' : 'bad');
-  el.textContent = code && code.data === p.data
-    ? 'Scan check passed: the model decodes back to your text. (Still test-scan the printed part.)'
-    : 'Scan check failed: the model could not be decoded. Try a larger module size or lower error correction.';
+  $('backRow').style.display = $('backEngrave').checked ? '' : 'none';
+  $('backNote').style.display = $('backEngrave').checked ? '' : 'none';
+
+  // scan check: look at the generated geometry the way a camera would and try to decode it
+  const decode = img => {
+    const pad = 40, w = img.width + 2 * pad;
+    const data = new Uint8ClampedArray(w * w * 4).fill(255);
+    for (let y = 0; y < img.height; y++) data.set(img.data.subarray(y * img.width * 4, (y + 1) * img.width * 4), ((y + pad) * w + pad) * 4);
+    const code = jsQR(data, w, w);
+    return code && code.data === p.data;
+  };
+  const report = (el, ok, label) => {
+    el.hidden = false;
+    el.className = 'scan ' + (ok ? 'ok' : 'bad');
+    el.textContent = ok
+      ? `${label} scan check passed: the model decodes back to your text. (Still test-scan the printed part.)`
+      : `${label} scan check failed: the model could not be decoded. Try a larger module size or lower error correction.`;
+  };
+  report($('scan'), decode(rasterizeTopDown(res.meshes, p.mode, i.plateSize, 10)), p.backDepth ? 'Front' : 'Model');
+  if (p.backDepth) report($('scanBack'), decode(rasterizeBottomUp(res.meshes, i.plateSize, 10)), 'Back');
+  else $('scanBack').hidden = true;
 }
 
 $('controls').addEventListener('input', rebuild);

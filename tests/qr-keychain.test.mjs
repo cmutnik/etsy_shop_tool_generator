@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import * as THREE from 'three';
 import jsQR from 'jsqr';
 import { buildKeychain, loopOutline } from '../tools/qr-keychain/geometry.js';
-import { qrMatrix, gridRects, rasterizeTopDown } from '../shared/js/qr-plate.js';
+import { qrMatrix, gridRects, rasterizeTopDown, rasterizeBottomUp } from '../shared/js/qr-plate.js';
 import { export3MF, collectMesh } from '../shared/js/export.js';
 import { assertWatertight } from './helpers.mjs';
 
@@ -150,4 +150,83 @@ test('3MF without parts stays a plain single mesh', async () => {
   const file = await write3mf(buildKeychain(base).group, {});
   assert.doesNotMatch(unzipText(file, '3D/3dmodel.model'), /basematerials|components/);
   assert.equal(execFileSync('unzip', ['-l', file]).toString().includes('model_settings'), false);
+});
+
+function scanRaster(img, flipX = false) {
+  const pad = 40, w = img.width + 2 * pad;
+  const data = new Uint8ClampedArray(w * w * 4).fill(255);
+  for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) {
+    const sx = flipX ? img.width - 1 - x : x;
+    data.set(img.data.subarray((y * img.width + sx) * 4, (y * img.width + sx) * 4 + 4), ((y + pad) * w + x + pad) * 4);
+  }
+  const r = jsQR(data, w, w);
+  return r && r.data;
+}
+
+test('back engraving: the underside scans when the keychain is flipped over, and both faces scan', () => {
+  for (const mode of ['raised', 'indented'])
+    for (const data of ['https://example.com', 'Café ☕ https://ex.com/é']) {
+      const r = buildKeychain({ ...base, data, mode, thickness: 4, backDepth: 0.8 });
+      assert.equal(scan(r, mode), data, `front ${mode}`);
+      const back = rasterizeBottomUp(r.meshes, r.info.plateSize, 10);
+      assert.equal(scanRaster(back), data, `back ${mode}`);
+      // (decoders such as jsQR also read mirrored codes, so check the orientation module by module instead:
+      // flipped over, the underside must show exactly the same pattern as the matrix, not its mirror image)
+      const matrix = qrMatrix(data, base.errorCorrection), ppm = 10, margin = base.margin, m = base.module;
+      let mismatchesBack = 0, mismatchesFront = 0, asymmetric = 0;
+      const front = rasterizeTopDown(r.meshes, mode, r.info.plateSize, ppm);
+      matrix.forEach((row, ri) => row.forEach((dark, ci) => {
+        const px = Math.round((margin + (ci + 0.5) * m) * ppm), py = Math.round((margin + (ri + 0.5) * m) * ppm);
+        if ((back.data[(py * back.width + px) * 4] === 0) !== dark) mismatchesBack++;
+        if ((front.data[(py * front.width + px) * 4] === 0) !== dark) mismatchesFront++;
+        if (dark !== row[matrix.length - 1 - ci]) asymmetric++;
+      }));
+      assert.equal(mismatchesFront, 0, `front ${mode}`);
+      assert.equal(mismatchesBack, 0, `back ${mode}: underside differs from the matrix`);
+      assert.ok(asymmetric > 20, 'this QR is not left/right symmetric, so the check above can tell a mirror image apart');
+    }
+});
+
+test('back engraving: all parts stay watertight/consistent and the front is unchanged', () => {
+  for (const mode of ['raised', 'indented'])
+    for (const loopPosition of ['above', 'below']) {
+      const withBack = buildKeychain({ ...base, mode, loopPosition, thickness: 4, backDepth: 0.8 });
+      withBack.group.children.forEach(m => assertWatertight(m, assert));
+      const box = new THREE.Box3().setFromObject(withBack.group);
+      assert.ok(Math.abs(box.min.z) < 1e-9, 'still on the bed');
+      assert.ok(withBack.meshes.some(m => m.userData.back) && withBack.meshes.filter(m => m.userData.back).length > 5);
+      const without = buildKeychain({ ...base, mode, loopPosition, thickness: 4 });
+      assert.equal(withBack.info.height, without.info.height);
+      assert.equal(withBack.info.filamentChangeZ, without.info.filamentChangeZ);
+    }
+});
+
+test('back engraving: pockets are open at z = 0 and its colour part matches the mode', () => {
+  const raised = buildKeychain({ ...base, thickness: 4, backDepth: 0.8 });
+  const indented = buildKeychain({ ...base, mode: 'indented', thickness: 4, backDepth: 0.8 });
+  assert.ok(raised.meshes.filter(m => m.userData.back).every(m => m.name === 'base'));
+  assert.ok(indented.meshes.filter(m => m.userData.back).every(m => m.name === 'qr'));
+  // the back layer only covers the plate between pockets: it must leave real voids at z=0 (less area than a full plate)
+  const P = raised.info.plateSize;
+  const area = r => r.meshes.filter(m => m.userData.back).reduce((a, m) => { m.geometry.computeBoundingBox(); const b = m.geometry.boundingBox; return a + (b.max.x - b.min.x) * (b.max.y - b.min.y); }, 0);
+  assert.ok(area(raised) < P * P * 0.8, `back layer area ${area(raised)} vs plate ${P * P}`);
+});
+
+test('back engraving: validation', () => {
+  assert.throws(() => buildKeychain({ ...base, backDepth: 0.2 }), /at least 0\.4 mm/);
+  assert.throws(() => buildKeychain({ ...base, thickness: 3, backDepth: 2.5 }), /too deep/);
+  assert.throws(() => buildKeychain({ ...base, mode: 'indented', thickness: 3, depth: 1, backDepth: 1.5 }), /front engraving 1 mm/);
+  assert.doesNotThrow(() => buildKeychain({ ...base, thickness: 3, backDepth: 0.8 }));
+  assert.equal(buildKeychain(base).info.backDepth, 0);
+});
+
+test('back engraving: 3MF keeps plate=slot 1, QR=slot 2 with a back layer', async () => {
+  for (const mode of ['raised', 'indented']) {
+    const r = buildKeychain({ ...base, mode, thickness: 4, backDepth: 0.8 });
+    const file = await write3mf(r.group, { title: 'k', parts: PARTS });
+    assert.match(execFileSync('unzip', ['-t', file]).toString(), /No errors detected/);
+    const cfg = unzipText(file, 'Metadata/model_settings.config');
+    assert.match(cfg, /value="Plate"\/>\s*<metadata key="extruder" value="1"/);
+    assert.match(cfg, /value="QR code"\/>\s*<metadata key="extruder" value="2"/);
+  }
 });
