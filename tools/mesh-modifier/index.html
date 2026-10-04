@@ -15,6 +15,7 @@
     #partList .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
     #partList input[type=color] { width: 30px; height: 24px; margin: 0; padding: 1px; flex: none; }
     #partList input[type=checkbox] { flex: none; }
+    #partList input.slot { width: 52px; margin: 0 0 0 auto; padding: 2px 4px; flex: none; }
     #partList .off { opacity: 0.45; text-decoration: line-through; }
     .rotbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
     .rotbar button { padding: 4px 8px; font-size: 13px; }
@@ -48,7 +49,7 @@
         </label>
         <small class="muted">3MF files carry their own units, so leave this on millimetres for them. For an STL, pick what the model was designed in. You can also drag a file onto the preview.</small>
         <ul id="partList"></ul>
-        <small class="muted" id="partHint" hidden>Untick a part to leave it out, or change its colour. Colours go into the 3MF and the preview.</small>
+        <small class="muted" id="partHint" hidden>Untick a part to leave it out, or change its colour. The last box is its filament slot for multi-colour printing: leave it on auto and parts of the same colour share a slot, or type a number to choose. Slots read from a 3MF are kept. Colours and slots go into the 3MF.</small>
       </fieldset>
 
       <fieldset>

@@ -27,6 +27,8 @@ Open an existing STL or 3MF, change its size and orientation, add a hanging tab 
 
 - **Repair.** `repairPart()` runs weld (vertices within 0.01 mm, on a grid), drop degenerate / duplicate triangles, orient (breadth-first over shared edges so neighbours walk each edge in opposite directions, then each connected piece turned outward by its volume), then fill boundary loops of up to 200 edges by ear clipping in the loop's best-fit plane (a fan if the outline is degenerate), then orient again. It returns a copy, a report, and `closed`, which is only true with no open edges *and* a real volume (a flat double skin does not count). The page keeps a repair only if it reduced the open edges, and keeps the originals for undo.
 
+- **Filament slots.** `assignSlots()` gives each part its explicit slot, or a shared one per colour. The importer reads `Metadata/model_settings.config` in the layout `export3MF()` writes (part id = component object id, or an object-level extruder); a mesh painted in several colours keeps separate slots. Bambu's own volume-range layout is not read.
+
 ## Limits
 
 - 3,000,000 triangles (the page warns and refuses above that).

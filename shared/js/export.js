@@ -53,7 +53,8 @@ const RELS = '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http
 /**
  * @param {object} opts
  *  title
- *  parts  optional multi-colour split: [{ name, label, names? }] in filament-slot order (first = slot 1). Meshes are
+ *  parts  optional multi-colour split: [{ name, label, names?, extruder? }]. A part's filament slot is `extruder` when given (1-based;
+ *         several parts may share one), otherwise its position (first = slot 1). Meshes are
  *         grouped by `mesh.name` (or any of `names`, to merge several meshes into one part); each group becomes its
  *         own 3MF part, coloured from the material of its first mesh.
  *
@@ -103,7 +104,7 @@ export function export3MF(object, { title = 'model', parts = null } = {}) {
         tri.push(`<triangle v1="${idx[0]}" v2="${idx[1]}" v3="${idx[2]}" pid="${COLOR_ID}" p1="${pi}"/>`);
       }
       objects += `<object id="${firstPart + pi}" name="${esc(part.label || part.name)}" type="model" pid="${BASE_ID}" pindex="${pi}"><mesh><vertices>${vertexXml(ids)}</vertices><triangles>${tri.join('')}</triangles></mesh></object>\n`;
-      settings += `    <part id="${firstPart + pi}" subtype="normal_part">\n      <metadata key="name" value="${esc(part.label || part.name)}"/>\n      <metadata key="extruder" value="${pi + 1}"/>\n    </part>\n`;
+      settings += `    <part id="${firstPart + pi}" subtype="normal_part">\n      <metadata key="name" value="${esc(part.label || part.name)}"/>\n      <metadata key="extruder" value="${part.extruder ?? pi + 1}"/>\n    </part>\n`;
     });
     const colors = parts.map(colorOf);
     model = `<?xml version="1.0" encoding="UTF-8"?>

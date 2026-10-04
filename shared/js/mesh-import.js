@@ -103,6 +103,26 @@ function readModel(text) {
   return out;
 }
 
+/**
+ * Filament slots from Metadata/model_settings.config (the layout export3MF writes, which Orca / Bambu / Prusa-family slicers use):
+ * { byPart: Map(part id -> slot), byObject: Map(object id -> slot) }. Missing or unreadable config just means no slots.
+ */
+async function readSlots(zip, dec) {
+  const out = { byPart: new Map(), byObject: new Map() };
+  const name = 'Metadata/model_settings.config';
+  if (!zip.has(name)) return out;
+  try {
+    const root = parseXml(dec.decode(await zip.read(name)));
+    const slot = el => { const m = kids(el, 'metadata').find(k => k.getAttribute('key') === 'extruder'); const n = m ? parseInt(m.getAttribute('value'), 10) : NaN; return n >= 1 ? n : null; };
+    for (const o of kids(root, 'object')) {
+      const s = slot(o);
+      if (s) out.byObject.set(o.getAttribute('id'), s);
+      for (const p of kids(o, 'part')) { const ps = slot(p); if (ps) out.byPart.set(p.getAttribute('id'), ps); }
+    }
+  } catch { /* an unreadable config only loses the slots */ }
+  return out;
+}
+
 /** 3MF -> parts (async: the package is deflated). */
 export async function parse3MF(buffer) {
   const zip = unzip(buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer)), dec = new TextDecoder();
@@ -122,10 +142,11 @@ export async function parse3MF(buffer) {
     }
     return models.get(path);
   };
+  const slots = await readSlots(zip, dec);
   const rootModel = await model(rootPath), parts = [];
   let triangles = 0;
 
-  async function instantiate(file, id, matrix, inheritedName, depth) {
+  async function instantiate(file, id, matrix, inheritedName, depth, parentId = null) {
     if (depth > 16) throw new Error('This 3MF nests its objects too deeply.');
     const m = await model(file), obj = m.objects.get(id);
     if (!obj) throw new Error(`This 3MF refers to a missing object (${id}).`);
@@ -155,10 +176,11 @@ export async function parse3MF(buffer) {
       for (const [color, list] of byColor) {
         const idx = new Uint32Array(list.length * 3);
         list.forEach((t, k) => { idx[k * 3] = tris[t * 3]; idx[k * 3 + 1] = tris[t * 3 + (flip ? 2 : 1)]; idx[k * 3 + 2] = tris[t * 3 + (flip ? 1 : 2)]; });
-        parts.push({ name: byColor.size > 1 && color ? `${name} (${color})` : name, color, positions: x, indices: idx });
+        const slot = byColor.size === 1 ? (slots.byPart.get(id) ?? slots.byObject.get(parentId) ?? slots.byObject.get(id)) : undefined;   // colour-split pieces keep separate slots
+        parts.push({ name: byColor.size > 1 && color ? `${name} (${color})` : name, color, positions: x, indices: idx, ...(slot ? { slot } : {}) });
       }
     }
-    for (const c of obj.components) await instantiate(c.path || file, c.id, compose(c.matrix, matrix), obj.components.length === 1 ? name : '', depth + 1);
+    for (const c of obj.components) await instantiate(c.path || file, c.id, compose(c.matrix, matrix), obj.components.length === 1 ? name : '', depth + 1, id);
   }
 
   const items = rootModel.build.length ? rootModel.build : [...rootModel.objects.values()].map(o => ({ id: o.id, path: null, matrix: IDENTITY }));

@@ -22,7 +22,7 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Open** an `.stl` (binary or ASCII) or `.3mf`, by file picker or drag and drop. The file is read in the page and never uploaded.
 - **Size and orientation:** type a width, depth or height in mm (or a percentage), with or without keeping proportions; rotate in 90-degree steps or any angle; mirror; centre on the bed and drop the lowest point to Z = 0; inch / cm files converted to mm.
 - **Lay flat:** one click turns the model so its largest flat face rests on the bed.
-- **Parts:** each part of a multi-part model can be left out or recoloured. A part that was inside-out is turned the right way round automatically.
+- **Parts and filament slots:** each part of a multi-part model can be left out, recoloured, or given a filament slot (1-16). On auto, parts of the same colour share a slot; slots already in a 3MF are kept, and the 3MF you download carries them. A part that was inside-out is turned the right way round automatically.
 - **Hanging tab:** a ring (round, rounded square, hexagon or lanyard slot) fused to the model's edge at bed level, so it prints flat with no supports. The edge is found from the real mesh, so it works on round and irregular models. Wall, overlap and hole clearance are checked with plain messages.
 - **Raised or engraved text:** any of the stamp fonts (or your own) set on the model's top surface, either added on top or cut into it (keeping at least 0.8 mm of floor), with warnings if the surface is uneven or the text hangs past the edge.
 - **Drill a hole:** a round hole straight down through the model, or part-way, at any position.

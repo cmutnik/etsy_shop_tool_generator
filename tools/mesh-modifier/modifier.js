@@ -3,7 +3,7 @@ import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
 import { parseMesh, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
 import { loadFont, parseFont, populateFontSelect, FONTS } from '../../shared/js/fonts.js';
-import { transformParts, buildGroup, partStats, boundsOfParts, flipPart, layFlatAngles, DEFAULT_COLOR } from './geometry.js';
+import { transformParts, buildGroup, partStats, boundsOfParts, flipPart, layFlatAngles, assignSlots, DEFAULT_COLOR } from './geometry.js';
 import { buildTab, buildLabel, placeLabel, TAB_STYLES, TAB_SIDES } from './attach.js';
 import { loadManifold, cutHole, cutText, splitModel } from './boolean3d.js';
 import { repairPart, describeRepair } from './repair.js';
@@ -48,7 +48,7 @@ async function load(file) {
     const inside = stats.filter(x => x.volume < 0).length;                     // inside-out parts: faces point inwards
     if (inside) { parts = parts.map((p, i) => (stats[i].volume < 0 ? flipPart(p) : p)); stats = parts.map(partStats); }
     if (stats.reduce((s, x) => s + x.triangles, 0) > MAX_TRIANGLES) throw new Error('That model has too many triangles for the browser.');
-    source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name), flipped: inside, original: null, repairLog: [], include: parts.map(() => true), colors: parts.map(p => p.color) };
+    source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name), flipped: inside, original: null, repairLog: [], include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null) };
     buildPartList();
     resetTransform();
     framed = false;
@@ -84,7 +84,11 @@ function buildPartList() {
     name.textContent = p.name;
     on.addEventListener('change', () => { source.include[i] = on.checked; li.classList.toggle('off', !on.checked); framed = false; rebuild(); });
     col.addEventListener('input', () => { source.colors[i] = col.value; rebuild(); });
-    li.append(on, col, name);
+    const slot = document.createElement('input');
+    slot.type = 'number'; slot.min = 1; slot.max = 16; slot.step = 1; slot.className = 'slot'; slot.value = source.slots[i] || ''; slot.placeholder = 'auto';
+    slot.title = 'Filament slot (1-16). Leave empty to share a slot with parts of the same colour.';
+    slot.addEventListener('input', () => { const n = parseInt(slot.value, 10); source.slots[i] = n >= 1 && n <= 16 ? n : null; rebuild(); });
+    li.append(on, col, name, slot);
     return li;
   }));
 }
@@ -176,7 +180,7 @@ async function build() {
   if (!source) return;
   const id = ++buildId;
   const rot = ['rotX', 'rotY', 'rotZ'].map(id => parseFloat($(id).value) || 0);
-  const used = source.parts.map((p, i) => ({ ...p, color: source.colors[i] })).filter((_, i) => source.include[i]);
+  const used = source.parts.map((p, i) => ({ ...p, color: source.colors[i], slot: source.slots[i] || undefined })).filter((_, i) => source.include[i]);
   if (!used.length) { showError('Keep at least one part ticked.'); return; }
   const xf = transformParts(used, {
     unit: num('unit'), rotate: rot, mirror: ['mirrorX', 'mirrorY', 'mirrorZ'].map(id => $(id).checked), scale,
@@ -240,6 +244,11 @@ async function build() {
   }
 
   const { group, parts: meta } = buildGroup(parts, extras);
+  assignSlots([...parts, ...extras]).forEach((s, i) => { meta[i].extruder = s; });
+  // show the slot each model part will get when the box is empty
+  const autoSlots = assignSlots(used);
+  let shown = 0;
+  document.querySelectorAll('#partList input.slot').forEach((el, i) => { if (source.include[i]) el.placeholder = String(autoSlots[shown++]); else el.placeholder = '-'; });
   viewer.setObject(group);
   const [w, d, h] = boundsOfParts(parts).size;
   result = { group, meta, size: xf.size, unscaledSize: xf.unscaledSize, sizeObj: { width: w, depth: d, height: h }, colored: parts.some(p => p.color) };

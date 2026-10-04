@@ -142,3 +142,18 @@ export function layFlatAngles(parts, { unit = 1, rotate = [0, 0, 0], mirror = [f
   const e = new THREE.Euler().setFromRotationMatrix(next, 'XYZ');
   return [e.x, e.y, e.z].map(v => { const d = Math.round(((v * 180) / Math.PI) * 1e4) / 1e4; return Math.abs(d) < 1e-9 ? 0 : d; });
 }
+
+/**
+ * Filament slot for each item ({ color, slot? }), in order. An explicit `slot` is kept. The others share a slot when they share a
+ * colour: slots are handed out in order of first appearance, skipping numbers an explicit slot already uses.
+ */
+export function assignSlots(items) {
+  const taken = new Set(items.map(i => i.slot).filter(Boolean)), byColor = new Map();
+  let next = 1;
+  return items.map(i => {
+    if (i.slot) return i.slot;
+    const key = (i.color || DEFAULT_COLOR).toUpperCase();
+    if (!byColor.has(key)) { while (taken.has(next)) next++; byColor.set(key, next++); }
+    return byColor.get(key);
+  });
+}

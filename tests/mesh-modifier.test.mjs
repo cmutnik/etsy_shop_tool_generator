@@ -412,3 +412,32 @@ test('repair: a repaired model can then be cut', async () => {
   const cut = await cutHole([part], { x: 0, y: 0, diameter: 5 });
   assert.ok(cut.touched && closed(cut.parts));
 });
+
+// ---------- filament slots ----------
+const { assignSlots } = await import('../tools/mesh-modifier/geometry.js');
+
+test('slots: parts of one colour share a slot, explicit slots are kept and not reused', () => {
+  assert.deepEqual(assignSlots([{ color: '#AA0000' }, { color: '#00AA00' }, { color: '#aa0000' }]), [1, 2, 1]);
+  assert.deepEqual(assignSlots([{ color: '#AA0000' }, { color: '#00AA00', slot: 1 }, { color: null }]), [2, 1, 3]);
+  assert.deepEqual(assignSlots([{ color: null }, { color: null }]), [1, 1]);
+});
+
+test('slots: export writes an explicit slot, import reads it back; without one the order is used', async () => {
+  const parts = [box(0, 0, 0, 20, 10, 5, '#CC2222', 'A'), box(5, 2, 5, 15, 8, 8, '#CC2222', 'B'), box(0, 0, 8, 10, 10, 12, '#2244CC', 'C')];
+  const { group, parts: meta } = buildGroup(parts);
+  const withSlots = meta.map((m, i) => ({ ...m, extruder: [2, 2, 1][i] }));
+  const back = await parse3MF(await export3MF(group, { title: 't', parts: withSlots }).arrayBuffer());
+  assert.deepEqual(back.map(p => p.slot), [2, 2, 1]);
+  const plain = await parse3MF(await export3MF(buildGroup(parts).group, { title: 't', parts: buildGroup(parts).parts }).arrayBuffer());
+  assert.deepEqual(plain.map(p => p.slot), [1, 2, 3], 'default: first part is slot 1, and so on');
+});
+
+test('slots: a part that is colour-split does not get one slot for all its colours', async () => {
+  const cube = box(0, 0, 0, 1, 1, 1), tri = (t, p1) => `<triangle v1="${cube.indices[t * 3]}" v2="${cube.indices[t * 3 + 1]}" v3="${cube.indices[t * 3 + 2]}" pid="9" p1="${p1}"/>`;
+  const verts = Array.from({ length: 8 }, (_, i) => `<vertex x="${cube.positions[i * 3]}" y="${cube.positions[i * 3 + 1]}" z="${cube.positions[i * 3 + 2]}"/>`).join('');
+  const model = `<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><basematerials id="9"><base name="a" displaycolor="#FF0000"/><base name="b" displaycolor="#0000FF"/></basematerials>
+    <object id="1" name="Two" type="model"><mesh><vertices>${verts}</vertices><triangles>${Array.from({ length: 12 }, (_, t) => tri(t, t < 6 ? 0 : 1)).join('')}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
+  const cfg = '<config><object id="1"><metadata key="extruder" value="3"/></object></config>';
+  const parts = await parse3MF(zipStore([['3D/3dmodel.model', model], ['Metadata/model_settings.config', cfg]]));
+  assert.equal(parts.length, 2); assert.deepEqual(parts.map(p => p.slot), [undefined, undefined]);
+});
