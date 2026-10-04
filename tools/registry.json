@@ -36,7 +36,8 @@
   {
     "id": "mesh-modifier",
     "title": "STL / 3MF Modifier",
-    "description": "Scale, split, add text or hanging holes to an existing model.",
-    "status": "idea"
+    "description": "Open an STL or 3MF, then resize, rotate, mirror, add a hanging tab or raised text. Keeps 3MF parts and colours.",
+    "status": "live",
+    "path": "mesh-modifier/"
   }
 ]

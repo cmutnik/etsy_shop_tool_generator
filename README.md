@@ -13,9 +13,18 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
 | [3D Wedding Invite](tools/wedding-invite-3d/) | planned | Invitation photo or SVG to a layered 3D print |
-| STL / 3MF modifier | idea | Scale, split, add text or hanging holes to an existing model |
+| [STL / 3MF Modifier](tools/mesh-modifier/) | live | Open an existing model, resize / rotate / mirror it, add a hanging tab or raised text; keeps 3MF parts and colours |
 
 The list shown on the home page comes from [tools/registry.json](tools/registry.json).
+
+### STL / 3MF Modifier
+
+- **Open** an `.stl` (binary or ASCII) or `.3mf`, by file picker or drag and drop. The file is read in the page and never uploaded.
+- **Size and orientation:** type a width, depth or height in mm (or a percentage), with or without keeping proportions; rotate in 90-degree steps or any angle; mirror; centre on the bed and drop the lowest point to Z = 0; inch / cm files converted to mm.
+- **Hanging tab:** a ring (round, rounded square, hexagon or lanyard slot) fused to the model's edge at bed level, so it prints flat with no supports. The edge is found from the real mesh, so it works on round and irregular models. Wall, overlap and hole clearance are checked with plain messages.
+- **Raised text:** any of the stamp fonts (or your own) set on the model's top surface, with warnings if the surface is uneven or the text hangs past the edge.
+- **3MF fidelity:** every object stays its own part with its name and colour, build transforms and component assemblies are applied, and a mesh painted in several colours becomes one part per colour. Tabs and text export as extra parts for multi-colour printing. Slicer project settings (profiles, filament assignments) are not read.
+- Reports triangle count, volume and open edges. It does not repair meshes or cut them (a true 3D boolean is a later step; see the roadmap).
 
 ### Image Prep
 

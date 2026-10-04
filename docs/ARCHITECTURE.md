@@ -21,7 +21,8 @@ shared/js/                  code used by more than one tool
   segmentation.js           seeded segmentation (random walker): subject mask from a few user-painted marks
   curves.js                 cubic Bezier fitting (Schneider) with corner detection, for smooth SVG output
   skeleton.js               centre-line tracing: thinning, spur pruning, skeleton -> paths -> stroke SVG
-  zip.js                    minimal zip writer (no dependencies); re-exported by export.js
+  zip.js                    minimal zip writer and reader (stored / deflate via DecompressionStream; no dependencies); the writer is re-exported by export.js
+  mesh-import.js            STL (binary / ASCII) and 3MF (parts, colours, units, transforms, components) -> plain parts; no dependencies (3MF needs a DOMParser)
   image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares
   raster-tools.js           distance transform + thin-feature detection (printability checks)
   icons.js                  brand icon paths (Simple Icons, CC0) for the QR stand's banner
@@ -36,6 +37,7 @@ tools/
   stamp/                    3D stamp generator (live); imprint.js draws the 2D preview + flags thin details
   image-prep/               picture -> black & white / SVG line art (live, no external libraries)
   qr-keychain/ qr-stand/    QR keychain and QR stand (live)
+  mesh-modifier/            STL / 3MF modifier (live): geometry.js transforms parts, attach.js builds the tab and label; no 3D booleans
   wedding-invite-3d/        planned - README only, see docs/ROADMAP.md
 tests/                      node --test; geometry, import, export (npm test)
 docs/                       this file + roadmap
