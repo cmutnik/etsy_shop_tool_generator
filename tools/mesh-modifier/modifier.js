@@ -4,9 +4,10 @@ import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
 import { parseMesh, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
 import { loadFont, parseFont, populateFontSelect, FONTS } from '../../shared/js/fonts.js';
 import { transformParts, buildGroup, partStats, boundsOfParts, flipPart, layFlatAngles, assignSlots, DEFAULT_COLOR } from './geometry.js';
-import { buildTab, buildLabel, placeLabel, TAB_STYLES, TAB_SIDES } from './attach.js';
+import { buildTab, buildLabel, placeLabel, buildInfill, TAB_STYLES, TAB_SIDES } from './attach.js';
 import { loadManifold, cutHole, cutText, splitModel } from './boolean3d.js';
 import { repairPart, describeRepair } from './repair.js';
+import { createHistory } from './history.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
@@ -21,6 +22,8 @@ let scale = [1, 1, 1];
 let result = null;         // { group, meta, size }
 let font = null, fontRequested = false;
 let timer = null, framed = false, view = 'print', buildId = 0, engineReady = false;
+const hist = createHistory(100);
+let partsVersion = 0, restoring = false, commitTimer = null;
 
 const round = (v, d = 2) => +v.toFixed(d);
 
@@ -55,7 +58,8 @@ async function load(file) {
     source.fileName = file.name;
     $('status').textContent = file.name;
     $('error').hidden = true;
-    build();
+    await build();
+    resetHistory();
   } catch (e) {
     $('status').textContent = '';
     showError(e.message || String(e));
@@ -105,15 +109,18 @@ $('repair').addEventListener('click', () => {
     if (report.openAfter < report.openBefore) { changed = true; return part; }   // keep any improvement; leave a part alone if nothing got better
     return p;
   });
-  if (changed) { source.original = source.original || before; source.stats = source.parts.map(partStats); }
+  if (changed) { source.original = source.original || before; source.stats = source.parts.map(partStats); partsVersion++; }
   source.repairLog = log;
   build();
+  commit();
 });
 $('undoRepair').addEventListener('click', () => {
   if (!source?.original) return;
   source.parts = source.original; source.original = null; source.repairLog = [];
   source.stats = source.parts.map(partStats);
+  partsVersion++;
   build();
+  commit();
 });
 
 // ---------- size controls ----------
@@ -153,6 +160,62 @@ document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click'
   if (result) viewer.setView(view, result.sizeObj);
 }));
 
+// ---------- undo / redo ----------
+const DERIVED = ['sizeX', 'sizeY', 'sizeZ', 'scalePct'];                         // shown from the real model, kept in `scale`, so not a separate edit
+const fieldEls = () => [...document.querySelectorAll('#controls input[id], #controls select[id], #controls textarea[id]')].filter(el => el.type !== 'file' && !DERIVED.includes(el.id));
+
+function snapshot() {
+  const fields = {};
+  for (const el of fieldEls()) fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  const data = { fields, scale: scale.slice(), include: source.include.slice(), colors: source.colors.slice(), slots: source.slots.slice(), version: partsVersion };
+  return { key: JSON.stringify(data), state: { ...data, parts: source.parts, original: source.original, stats: source.stats, repairLog: source.repairLog.slice() } };
+}
+function updateHistoryButtons() { $('undo').disabled = !hist.canUndo; $('redo').disabled = !hist.canRedo; }
+function record() {
+  clearTimeout(commitTimer); commitTimer = null;
+  if (!source || restoring) return;
+  const s = snapshot();
+  if (hist.push(s.state, s.key)) updateHistoryButtons();
+}
+function commit() { clearTimeout(commitTimer); commitTimer = setTimeout(record, 500); }   // a burst of typing becomes one step
+function resetHistory() {
+  clearTimeout(commitTimer); commitTimer = null;
+  partsVersion++;
+  const s = snapshot();
+  hist.reset(s.state, s.key);
+  updateHistoryButtons();
+}
+
+async function restore(s) {
+  restoring = true;
+  try {
+    const fontBefore = $('font').value;
+    for (const [id, v] of Object.entries(s.fields)) { const el = $(id); if (!el) continue; if (el.type === 'checkbox') el.checked = v; else el.value = v; }
+    scale = s.scale.slice();
+    Object.assign(source, { include: s.include.slice(), colors: s.colors.slice(), slots: s.slots.slice(), parts: s.parts, original: s.original, stats: s.stats, repairLog: s.repairLog.slice() });
+    partsVersion = s.version;
+    buildPartList();
+    if ($('font').value !== fontBefore) await selectFont();
+    await build();
+  } finally { restoring = false; updateHistoryButtons(); }
+}
+async function step(dir) {
+  if (!source) return;
+  if (commitTimer) record();                                                    // keep the edit that is still waiting to be recorded
+  const s = dir < 0 ? hist.undo() : hist.redo();
+  if (s) await restore(s); else updateHistoryButtons();
+}
+$('undo').addEventListener('click', () => step(-1));
+$('redo').addEventListener('click', () => step(1));
+document.addEventListener('keydown', e => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+  const t = e.target, editing = t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && !['checkbox', 'button', 'range'].includes(t.type)));
+  if (editing) return;                                                          // inside a field, Ctrl+Z undoes typing as usual
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); step(-1); }
+  else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); step(1); }
+});
+
 // ---------- building ----------
 function showError(msg) {
   $('error').hidden = !msg;
@@ -160,7 +223,7 @@ function showError(msg) {
   $('downloadStl').disabled = $('download3mf').disabled = !!msg || !result;
 }
 
-function rebuild() { clearTimeout(timer); timer = setTimeout(build, 150); }
+function rebuild() { clearTimeout(timer); timer = setTimeout(build, 150); if (!restoring) commit(); }
 
 function syncUI() {
   $('tabOptions').hidden = !$('tabOn').checked;
@@ -171,7 +234,8 @@ function syncUI() {
   $('splitPegOptions').hidden = $('splitKeep').value !== 'both';
   const engraved = $('labelMode').value === 'engraved';
   $('labelRaiseText').textContent = engraved ? 'Cut depth (mm)' : 'Raised by (mm)';
-  $('labelColorRow').hidden = engraved;
+  $('labelFillRow').hidden = !engraved;
+  $('labelColorRow').hidden = engraved && !$('labelFill').checked;
   if ($('labelOn').checked && !font && !fontRequested) { fontRequested = true; selectFont(); }
 }
 
@@ -187,7 +251,7 @@ async function build() {
     center: $('center').checked, onBed: $('onBed').checked,
   });
   const warnings = [], extras = [];
-  let error = '', parts = xf.parts, cutDone = false;
+  let error = '', parts = xf.parts, cutDone = false, infill = null;
   const engraved = $('labelOn').checked && $('labelMode').value === 'engraved';
   try {
     // 3D cuts first (they change the model), then the parts that are only added on
@@ -207,6 +271,7 @@ async function build() {
         const depth = num('labelRaise');
         if (l.top - depth < 0.8) throw new Error(`The engraving is too deep: the surface is ${l.top.toFixed(1)} mm high and at least 0.8 mm of floor must remain. Use a depth under ${(l.top - 0.8).toFixed(1)} mm.`);
         parts = await cutText(parts, l.groups, l.top - depth, l.top + 1); cutDone = true;
+        if ($('labelFill').checked) infill = buildInfill(l.groups, l.top - depth, depth);
         warnings.push(...l.warnings);
       }
       if ($('splitOn').checked) {
@@ -228,6 +293,7 @@ async function build() {
       extras.push({ name: 'tab', label: 'Hanging tab', color: $('tabColor').value, geometry: t.geometry });
       warnings.push(...t.warnings);
     }
+    if (infill) extras.push({ name: 'infill', label: 'Engraving infill', color: $('labelColor').value, geometry: infill });
     if ($('labelOn').checked && !engraved && font) {
       const l = buildLabel(parts, {
         font, text: $('labelText').value, height: num('labelHeight'), raise: num('labelRaise'),
@@ -240,7 +306,7 @@ async function build() {
     if (id !== buildId) return;
     error = e.message || String(e);
     $('status').textContent = source.fileName || '';
-    parts = xf.parts; extras.length = 0; cutDone = false;                    // show the model without the change that failed
+    parts = xf.parts; extras.length = 0; cutDone = false; infill = null;                    // show the model without the change that failed
   }
 
   const { group, parts: meta } = buildGroup(parts, extras);

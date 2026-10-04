@@ -17,6 +17,7 @@
     #partList input[type=checkbox] { flex: none; }
     #partList input.slot { width: 52px; margin: 0 0 0 auto; padding: 2px 4px; flex: none; }
     #partList .off { opacity: 0.45; text-decoration: line-through; }
+    .viewbar button:disabled { opacity: 0.45; cursor: not-allowed; }
     .rotbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
     .rotbar button { padding: 4px 8px; font-size: 13px; }
   </style>
@@ -160,8 +161,9 @@
             <label>Front / back (mm) <input type="number" id="labelY" value="0" step="1"></label>
             <label>Turn (deg) <input type="number" id="labelRot" value="0" step="5"></label>
           </div>
+          <label class="inline" id="labelFillRow" hidden><input type="checkbox" id="labelFill"> Fill the engraving with a second colour</label>
           <label id="labelColorRow">Text colour <input type="color" id="labelColor" value="#111111"></label>
-          <small class="muted">Text goes on the highest surface under it. Put it on a flat area; you will see a warning if the surface is uneven or the text hangs past the edge. Engraving needs a closed (watertight) model and leaves at least 0.8 mm of floor.</small>
+          <small class="muted">Text goes on the highest surface under it. Put it on a flat area; you will see a warning if the surface is uneven or the text hangs past the edge. Engraving needs a closed (watertight) model and leaves at least 0.8 mm of floor. "Fill the engraving" adds the lettering as its own part, exactly filling the pocket, for a two-colour print: use the 3MF download (it keeps the parts and filament slots; an STL merges the two shells).</small>
         </div>
       </fieldset>
 
@@ -186,6 +188,8 @@
         <button data-view="print" class="active">Angled</button>
         <button data-view="top">Top</button>
         <button data-view="underside">Underside</button>
+        <button id="undo" type="button" title="Undo (Ctrl/Cmd+Z)" disabled>Undo</button>
+        <button id="redo" type="button" title="Redo (Ctrl/Cmd+Shift+Z)" disabled>Redo</button>
         <span id="status" class="status">Open a file to start.</span>
       </div>
       <div id="viewport"></div>

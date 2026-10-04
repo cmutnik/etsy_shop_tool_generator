@@ -10,6 +10,7 @@ Open an existing STL or 3MF, change its size and orientation, add a hanging tab 
 | `index.html`, `modifier.js` | The page and its wiring (no geometry in here) |
 | `geometry.js` | `transformParts()` (units, rotate, mirror, scale, centre, drop to bed), `partStats()` (triangles, volume, open edges), `buildGroup()` (preview / export group) |
 | `attach.js` | `buildTab()` and `buildLabel()`, built in the model's final coordinates |
+| `history.js` | `createHistory()`: undo / redo of recorded states (pure) |
 | `repair.js` | `repairPart()` and `describeRepair()`: weld, clean, orient, fill holes |
 | `boolean3d.js` | `cutHole()`, `cutText()`, `splitModel()` with manifold-3d, loaded on first use |
 | `../../shared/js/mesh-import.js` | STL and 3MF readers (shared, no dependencies) |
@@ -29,6 +30,9 @@ Open an existing STL or 3MF, change its size and orientation, add a hanging tab 
 
 - **Filament slots.** `assignSlots()` gives each part its explicit slot, or a shared one per colour. The importer reads `Metadata/model_settings.config` in the layout `export3MF()` writes (part id = component object id, or an object-level extruder); a mesh painted in several colours keeps separate slots. Bambu's own volume-range layout is not read.
 
+- **Engraving infill.** With "Fill the engraving" on, `buildInfill()` extrudes the same outlines `cutText()` removed, from the pocket floor to the surface, as a separate part. It touches the body only on the pocket walls and floor (no overlap, which would put two filaments in one place), so body + infill is exactly the original solid; the test checks that by volume. Use the 3MF: an STL merges the two shells.
+- **Undo / redo.** The page records a snapshot of every field (except the derived size boxes), the scale, which parts are included, their colours and slots, and which version of the parts is loaded (repair). `record()` runs 500 ms after the last change, so typing is one step; a snapshot is only added if its key differs from the current one. Restoring puts the fields back and rebuilds. Snapshots hold references to the (never mutated) part arrays, so they are cheap. An uploaded font file is not part of history.
+
 ## Limits
 
 - 3,000,000 triangles (the page warns and refuses above that).
@@ -37,4 +41,4 @@ Open an existing STL or 3MF, change its size and orientation, add a hanging tab 
 
 ## Tests
 
-`tests/mesh-modifier.test.mjs` covers the cuts (volumes checked against the geometry: hole, pocket, split with pegs and sockets) the repair (missing face, seam, flipped and inside-out triangles, degenerate and duplicate triangles, a concave hole, a patch on a sphere, holes that are too large, a repaired model then cut) and also covers the zip reader, both STL forms, 3MF units / transforms / components / colour splits, the round trip through `export3MF()`, every tab shape and side, and the label checks.
+`tests/mesh-history.test.mjs` covers the undo / redo stack. `tests/mesh-modifier.test.mjs` covers the cuts (volumes checked against the geometry: hole, pocket, split with pegs and sockets) the repair (missing face, seam, flipped and inside-out triangles, degenerate and duplicate triangles, a concave hole, a patch on a sphere, holes that are too large, a repaired model then cut) and also covers the zip reader, both STL forms, 3MF units / transforms / components / colour splits, the round trip through `export3MF()`, every tab shape and side, and the label checks.

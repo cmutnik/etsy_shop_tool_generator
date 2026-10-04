@@ -441,3 +441,23 @@ test('slots: a part that is colour-split does not get one slot for all its colou
   const parts = await parse3MF(zipStore([['3D/3dmodel.model', model], ['Metadata/model_settings.config', cfg]]));
   assert.equal(parts.length, 2); assert.deepEqual(parts.map(p => p.slot), [undefined, undefined]);
 });
+
+// ---------- engraving infill ----------
+const { buildInfill } = await import('../tools/mesh-modifier/attach.js');
+
+test('infill: it exactly fills the engraved pocket, so body + infill is the original solid', async () => {
+  const parts = slab(), donut = { outer: ring(-5, -5, 10, 10).outer, holes: [ring(-2, -2, 4, 4).outer] }, depth = 2, top = 10;
+  const body = await cutText(parts, [donut], top - depth, top + 1);
+  const geo = buildInfill([donut], top - depth, depth);
+  const mesh = new THREE.Mesh(geo); mesh.name = 'infill';
+  assertWatertight(mesh, assert);
+  geo.computeBoundingBox();
+  near(geo.boundingBox.min.z, 8, 'starts at the pocket floor'); near(geo.boundingBox.max.z, 10, 'ends at the surface');
+  const fill = weldSoup(Array.from(geo.attributes.position.array), 'fill');
+  within(volume(body) + partStats(fill).volume, 8000, 1, 'body + infill = the original slab');
+  // and the colour survives a 3MF round trip as its own part with its own slot
+  const { group, parts: meta } = buildGroup(body, [{ name: 'infill', label: 'Engraving infill', color: '#111111', geometry: geo }]);
+  meta.forEach((m, i) => { m.extruder = [1, 2][i]; });
+  const back = await parse3MF(await export3MF(group, { title: 't', parts: meta }).arrayBuffer());
+  assert.deepEqual(back.map(p => [p.name, p.color, p.slot]), [['Slab', '#CC2222', 1], ['Engraving infill', '#111111', 2]]);
+});

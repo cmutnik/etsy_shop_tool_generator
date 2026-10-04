@@ -171,6 +171,14 @@ export function placeLabel(parts, { font, text, height, raise, x, y, rotate = 0 
   return { groups, top, warnings };
 }
 
+/**
+ * The part that fills an engraving: the same outlines as the pocket cut by cutText(), from the pocket floor (`z0`) up `depth` mm to the
+ * surface. It touches the body only along the pocket walls and floor (no overlap), so each part keeps its own filament in a multi-colour print.
+ */
+export function buildInfill(groups, z0, depth) {
+  return extrudeShapes(groupsToShapes(groups), depth, z0);
+}
+
 /** Raised text: the outlines from placeLabel() extruded up from 0.3 mm inside the surface. Returns { geometry, warnings, top } or throws. */
 export function buildLabel(parts, opts) {
   const { groups, top, warnings } = placeLabel(parts, opts), SINK = 0.3;
