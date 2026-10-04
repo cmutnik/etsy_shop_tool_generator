@@ -29,8 +29,8 @@ export function splitRegions(mode, w, h, share) {
 }
 
 /** Scale (uniformly, only if fit) and move a centred layout into a region. */
-function place(layout, region, fit) {
-  const scale = fit ? Math.min(region.w / layout.width, region.h / layout.height) : 1;
+function place(layout, region, fit, zoom = 1) {
+  const scale = (fit ? Math.min(region.w / layout.width, region.h / layout.height) : 1) * zoom;
   return {
     groups: mapGroups(layout.groups, (x, y) => [x * scale + region.cx, y * scale + region.cy]),
     scale,
@@ -40,7 +40,7 @@ function place(layout, region, fit) {
 
 /**
  * @param {object} o
- *  artMode ('text'|'logo'|'logo-above'|'logo-left'), logo ({groups,width,height}|null), logoShare (0-1)
+ *  artMode ('text'|'logo'|'logo-above'|'logo-left'), logo ({groups,width,height}|null), logoShare (0-1), logoFullBleed (bool, logo-only layout: use the whole stamp, not just the area inside border/margin), logoScale (fraction of the space the logo's region gives it; default 1)
  *  font, text, fontSize, lineSpacing, autoFit, textPadding
  *  shape ('rect'|'ellipse'), width, height, cornerRadius
  *  border (bool), borderWidth, margin (gap between outer edge and relief)
@@ -87,7 +87,11 @@ export function buildStamp(o) {
   const art = [];
   let textInfo = null;
   if (wantLogo) {
-    if (o.logo && o.logo.groups.length) art.push(...place(o.logo, regions.logo, true).groups);
+    // edge to edge: ignore margin, border and padding so the logo can reach the stamp's outer edges
+    const bleed = o.logoFullBleed && o.artMode === 'logo';
+    const region = bleed ? { cx: 0, cy: 0, w: o.width, h: o.height } : regions.logo;
+    if (bleed && o.shape === 'ellipse') warnings.push('Edge to edge on a circle/oval: the logo\'s corners can extend past the curved edge of the stamp.');
+    if (o.logo && o.logo.groups.length) art.push(...place(o.logo, region, true, o.logoScale ?? 1).groups);
     else warnings.push('Upload a logo (SVG, PNG or JPG) to use this layout.');
   }
   if (wantText && o.font && o.text.trim()) {

@@ -116,6 +116,8 @@ function readParams() {
     artMode: $('artMode').value,
     logo,
     logoShare: num('logoShare') / 100,
+    logoScale: num('logoScale') / 100,
+    logoFullBleed: $('logoFullBleed').checked,
     font,
     text: $('text').value,
     fontSize: num('fontSize'),
@@ -147,12 +149,14 @@ function rebuild(reloadLogo = false) {
 function doBuild() {
   if (logoDirty) { updateLogo(); logoDirty = false; }
   const p = readParams();
-  if ([p.fontSize, p.lineSpacing, p.textPadding, p.width, p.height, p.borderWidth, p.margin, p.relief, p.baseThickness, p.handleSize, p.handleHeight, p.logoShare].some(Number.isNaN)) return;
+  if ([p.fontSize, p.lineSpacing, p.textPadding, p.width, p.height, p.borderWidth, p.margin, p.relief, p.baseThickness, p.handleSize, p.handleHeight, p.logoShare, p.logoScale].some(Number.isNaN)) return;
 
   const usesLogo = p.artMode !== 'text', usesText = p.artMode !== 'logo';
   $('logoControls').style.display = usesLogo ? '' : 'none';
   $('textFieldset').style.display = usesText ? '' : 'none';
   $('logoShare').parentElement.style.display = p.artMode === 'logo' || p.artMode === 'text' ? 'none' : '';
+  $('logoScaleValue').textContent = `${$('logoScale').value}%`;
+  $('bleedRow').style.display = p.artMode === 'logo' ? '' : 'none';
   const isSvg = logoSource && logoSource.kind === 'svg';
   $('whiteRow').style.display = !logoSource || isSvg ? '' : 'none';
   $('rasterControls').style.display = logoSource && !isSvg ? '' : 'none';
