@@ -59,6 +59,11 @@
             </div>
             <label class="inline"><input type="checkbox" id="invert"> Invert (light art on a dark background)</label>
           </div>
+          <label>Logo size (%) <small class="muted-inline">(100 = fill the available space)</small>
+            <input type="range" id="logoScale" value="100" min="10" max="100" step="5">
+            <span id="logoScaleValue" class="muted-inline">100%</span>
+          </label>
+          <label class="inline" id="bleedRow"><input type="checkbox" id="logoFullBleed"> Edge to edge <small class="muted-inline">(logo may touch the stamp's edges, ignoring border and margins)</small></label>
           <label>Logo share of stamp (%) <input type="number" id="logoShare" value="55" min="20" max="80" step="5"></label>
           <small id="logoNote" class="muted">SVG: only filled shapes are used (convert strokes to outlines first). PNG/JPG: pick the cleanest source, then adjust smoothing and specks until the imprint preview looks right. High-contrast, solid shapes work best.</small>
         </div>
