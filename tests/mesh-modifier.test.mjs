@@ -230,3 +230,185 @@ test('model + tab + label export as a coloured multi-part 3MF and as one STL', {
   const stl = parseSTL(await exportSTL(group).arrayBuffer());
   assert.ok(partStats(stl).triangles > 100);
 });
+
+// ---------- lay flat, inside-out ----------
+const { flipPart, layFlatAngles } = await import('../tools/mesh-modifier/geometry.js');
+
+test('lay flat: a box saved on its side or at any angle ends up resting on its largest face', () => {
+  const part = box(0, 0, 0, 40, 20, 6);                                        // largest face is 40 x 20
+  for (const rotate of [[0, 0, 0], [90, 0, 0], [0, 90, 0], [37, 123, -58], [180, 0, 33]]) {
+    const angles = layFlatAngles([part], { rotate });
+    const r = transformParts([part], { rotate: angles });
+    near(r.size[2], 6, `rotate ${rotate}: 6 mm tall`);
+  }
+});
+
+test('lay flat: works through a mirror, and gives nothing for an empty model', () => {
+  const part = box(0, 0, 0, 40, 20, 6);
+  const mirror = [true, false, true];
+  const angles = layFlatAngles([part], { rotate: [90, 30, 0], mirror });
+  near(transformParts([part], { rotate: angles, mirror }).size[2], 6, 'mirrored and laid flat');
+  assert.equal(layFlatAngles([{ ...part, indices: new Uint32Array(0) }], {}), null);
+});
+
+test('flipPart turns an inside-out part the right way round', () => {
+  const b = box(0, 0, 0, 10, 10, 10), inside = flipPart(b);
+  assert.ok(partStats(inside).volume < 0 && partStats(b).volume > 0);
+  near(partStats(flipPart(inside)).volume, 1000, 'flipped back');
+  assert.equal(partStats(inside).openEdges, 0);
+});
+
+// ---------- 3D cuts (manifold-3d) ----------
+const { cutHole, cutText, splitModel } = await import('../tools/mesh-modifier/boolean3d.js');
+const volume = parts => parts.reduce((s, p) => s + partStats(p).volume, 0);
+const closed = parts => parts.every(p => partStats(p).openEdges === 0 && partStats(p).volume > 0);
+const within = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b} (tolerance ${tol})`);
+const slab = () => transformParts([box(0, 0, 0, 40, 20, 10, '#CC2222', 'Slab')], {}).parts;      // 8000 mm3, centred, 10 tall
+const ring = (x, y, w, h) => ({ outer: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], holes: [] });
+
+test('hole: through the model, part-way down, and missing the model', async () => {
+  const r = 2.5, circle = Math.PI * r * r;
+  const through = await cutHole(slab(), { x: 0, y: 0, diameter: 5 });
+  assert.ok(through.touched && closed(through.parts));
+  within(volume(through.parts), 8000 - circle * 10, 8000 * 0.005, 'through hole removes pi r^2 x 10');
+  const blind = await cutHole(slab(), { x: 5, y: 3, diameter: 5, depth: 4 });
+  within(volume(blind.parts), 8000 - circle * 4, 8000 * 0.005, 'blind hole 4 mm deep');
+  const miss = await cutHole(slab(), { x: 100, y: 0, diameter: 5 });
+  assert.equal(miss.touched, false);
+  await assert.rejects(cutHole(slab(), { x: 0, y: 0, diameter: 0.2 }), /at least 1 mm/);
+});
+
+test('hole: only the parts it touches are re-meshed, colours and names kept', async () => {
+  const a = transformParts([box(0, 0, 0, 20, 20, 10, '#CC2222', 'A'), box(30, 0, 0, 50, 20, 10, '#2244CC', 'B')], {}).parts;
+  const out = await cutHole(a, { x: a[0].positions[0] + 10, y: 0, diameter: 4 });
+  assert.equal(out.parts.length, 2);
+  assert.equal(out.parts[1], a[1], 'untouched part passes through as is');
+  assert.deepEqual(out.parts.map(p => [p.name, p.color]), [['A', '#CC2222'], ['B', '#2244CC']]);
+});
+
+test('cut: an open (not watertight) part gives a readable error', async () => {
+  const bad = slab();
+  bad[0] = { ...bad[0], indices: bad[0].indices.slice(0, 33) };
+  await assert.rejects(cutHole(bad, { x: 0, y: 0, diameter: 5 }), /not a closed \(watertight\) solid/);
+});
+
+test('engraved text: cuts the given outline to the given depth, letter counters stay open', async () => {
+  const parts = slab(), square = ring(-5, -5, 10, 10);
+  const out = await cutText(parts, [square], 8, 11);
+  assert.ok(closed(out));
+  within(volume(out), 8000 - 100 * 2, 1, 'a 10 x 10 pocket 2 mm deep');
+  const donut = { outer: square.outer, holes: [ring(-2, -2, 4, 4).outer] };
+  within(volume(await cutText(parts, [donut], 8, 11)), 8000 - (100 - 16) * 2, 1, 'the island inside the ring is kept');
+});
+
+test('split: both halves laid out for printing, with pegs and sockets', async () => {
+  const parts = slab();
+  const r = await splitModel(parts, { z: 4, keep: 'both', pegs: true, pegDiameter: 5, pegHeight: 3, clearance: 0.25, gap: 6 });
+  assert.deepEqual(r.warnings, []);
+  assert.deepEqual(r.parts.map(p => p.name), ['Slab', 'Alignment pegs', 'Slab']);
+  assert.ok(closed(r.parts));
+  const [lo, pegs, up] = r.parts.map(p => bounds(p));
+  near(lo.min[2], 0, 'lower on the bed'); near(up.min[2], 0, 'upper dropped to the bed, cut face down');
+  near(up.max[2], 6, 'upper is 10 - 4 = 6 tall');
+  near(pegs.min[2], 3.5, 'pegs sink 0.5 mm into the lower half'); near(pegs.max[2], 7, 'and stand 3 mm above the cut (z = 4 + 3)');
+  assert.ok(up.min[0] - lo.max[0] >= 5.99, `halves are at least the gap apart: ${up.min[0] - lo.max[0]}`);
+  const all = boundsOfParts(r.parts);
+  near((all.min[0] + all.max[0]) / 2, 0, 'centred');
+  // volume: the slab, plus two pegs (3 mm above the cut + 0.5 mm sunk in), minus two sockets (radius 2.75, 3.74 mm into the upper half)
+  const pegVolume = Math.PI * 2.5 ** 2 * 3.5 * 2, socketVolume = Math.PI * 2.75 ** 2 * 3.74 * 2;
+  within(volume(r.parts), 8000 + pegVolume - socketVolume, 15, 'volume balances');
+});
+
+test('split: keep one half, and the checks', async () => {
+  const lower = await splitModel(slab(), { z: 4, keep: 'lower' });
+  within(volume(lower.parts), 3200, 1, 'lower half'); near(bounds(lower.parts[0]).max[2], 4, 'lower is 4 tall');
+  const upper = await splitModel(slab(), { z: 4, keep: 'upper' });
+  within(volume(upper.parts), 4800, 1, 'upper half'); near(bounds(upper.parts[0]).min[2], 0, 'dropped to the bed');
+  await assert.rejects(splitModel(slab(), { z: 0.1, keep: 'both' }), /between 0\.5 and/);
+  await assert.rejects(splitModel(slab(), { z: 10, keep: 'both' }), /between 0\.5 and/);
+  const thin = await splitModel(slab(), { z: 8, keep: 'both', pegs: true, pegHeight: 4 });
+  assert.ok(thin.warnings.some(w => /too thin/.test(w)));
+  const tiny = await splitModel(transformParts([box(0, 0, 0, 6, 6, 10)], {}).parts, { z: 5, keep: 'both', pegs: true, pegDiameter: 5 });
+  assert.ok(tiny.warnings.some(w => /too small for alignment pegs/.test(w)));
+});
+
+test('split: a multi-part model is cut at one plane, each part keeping its colour', async () => {
+  const parts = transformParts([box(0, 0, 0, 20, 20, 10, '#CC2222', 'A'), box(0, 0, 10, 20, 20, 20, '#2244CC', 'B')], {}).parts;
+  const r = await splitModel(parts, { z: 5, keep: 'both' });
+  assert.deepEqual(r.parts.map(p => p.color), ['#CC2222', '#CC2222', '#2244CC']);
+  assert.ok(closed(r.parts));
+});
+
+// ---------- repair ----------
+const { repairPart, describeRepair } = await import('../tools/mesh-modifier/repair.js');
+const dropTriangles = (part, list) => ({ ...part, indices: Uint32Array.from(Array.from(part.indices).filter((_, i) => !list.includes(Math.floor(i / 3)))) });
+const soupToPart = (soup, name = 'soup') => { const positions = Float32Array.from(soup); return { name, color: null, positions, indices: Uint32Array.from({ length: positions.length / 3 }, (_, i) => i) }; };
+
+test('repair: a missing face (two triangles) is filled and the volume comes back', () => {
+  const broken = dropTriangles(box(0, 0, 0, 10, 10, 10), [2, 3]);               // the top face
+  assert.ok(partStats(broken).openEdges > 0);
+  const { part, report } = repairPart(broken);
+  assert.equal(report.closed, true); assert.equal(report.filledHoles, 1); assert.equal(report.openAfter, 0);
+  near(partStats(part).volume, 1000, 'volume'); assert.match(describeRepair('Box', report), /filled 1 hole.*closed solid/);
+});
+
+test('repair: unwelded copies of the same corner (a seam) are merged', () => {
+  const soup = soupOf(box(0, 0, 0, 10, 10, 10)).map((v, i) => (i % 3 === 0 ? v + (i % 7) * 1e-4 : v));   // tiny differences: not identical, not welded
+  const p = soupToPart(soup);
+  assert.ok(partStats(p).openEdges > 0, 'every triangle is on its own');
+  const { part, report } = repairPart(p, { tolerance: 0.01 });
+  assert.equal(report.closed, true); assert.equal(report.mergedVertices, 36 - 8);
+  within(partStats(part).volume, 1000, 0.1, 'volume (the corners were nudged by up to 0.0006 mm)');
+});
+
+test('repair: flipped triangles and a whole inside-out part are turned round', () => {
+  const b = box(0, 0, 0, 10, 10, 10), flipped = b.indices.slice();
+  for (const t of [0, 5, 9]) { const k = flipped[t * 3 + 1]; flipped[t * 3 + 1] = flipped[t * 3 + 2]; flipped[t * 3 + 2] = k; }
+  let r = repairPart({ ...b, indices: flipped });
+  assert.equal(r.report.closed, true); assert.equal(r.report.flippedTriangles, 3); near(partStats(r.part).volume, 1000, 'three flipped triangles');
+  r = repairPart(flipPart(b));
+  assert.equal(r.report.closed, true); near(partStats(r.part).volume, 1000, 'inside-out');
+  assert.equal(repairPart(b).report.flippedTriangles, 0, 'a good part is not touched');
+});
+
+test('repair: degenerate and duplicated triangles are dropped', () => {
+  const b = box(0, 0, 0, 10, 10, 10);
+  const extra = Uint32Array.from([...b.indices, 0, 0, 1, 2, 2, 2, ...b.indices.slice(0, 3)]);   // two degenerate + one duplicate
+  const { part, report } = repairPart({ ...b, indices: extra });
+  assert.equal(report.removedTriangles, 3); assert.equal(report.closed, true); assert.equal(partStats(part).triangles, 12);
+});
+
+test('repair: a concave (L-shaped) hole and a patch on a sphere are filled with the right shape', () => {
+  const L = [[0, 0], [20, 0], [20, 10], [10, 10], [10, 20], [0, 20]];
+  const shape = new THREE.Shape(L.map(([x, y]) => new THREE.Vector2(x, y)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 5, bevelEnabled: false }).toNonIndexed();
+  const full = weldSoup(Array.from(geo.attributes.position.array), 'L'), expected = partStats(full).volume;
+  const top = []; for (let t = 0; t < full.indices.length / 3; t++) if ([0, 1, 2].every(k => Math.abs(full.positions[full.indices[t * 3 + k] * 3 + 2] - 5) < 1e-6)) top.push(t);
+  assert.ok(top.length >= 4, 'the L has a multi-triangle cap');
+  const r = repairPart(dropTriangles(full, top));
+  assert.equal(r.report.closed, true); near(partStats(r.part).volume, expected, 'L prism volume restored exactly (the hole is flat)');
+
+  const sphere = weldSoup(Array.from(new THREE.SphereGeometry(10, 24, 16).toNonIndexed().attributes.position.array), 'ball');
+  const patch = Array.from({ length: 6 }, (_, i) => 100 + i);                    // a few neighbouring triangles somewhere
+  const holey = dropTriangles(sphere, patch), s = repairPart(holey);
+  assert.equal(s.report.closed, true, describeRepair('ball', s.report));
+  const v = partStats(s.part).volume, whole = partStats(sphere).volume;
+  assert.ok(v > whole * 0.9 && v < whole * 1.1, `sphere volume ${v} vs ${whole}`);
+});
+
+test('repair: holes that are too large, and meshes that cannot be closed, are reported and not claimed fixed', () => {
+  const broken = dropTriangles(box(0, 0, 0, 10, 10, 10), [2, 3]);
+  const big = repairPart(broken, { maxHoleEdges: 3 });
+  assert.equal(big.report.closed, false); assert.equal(big.report.skippedHoles, 1);
+  assert.match(describeRepair('Box', big.report), /remain.*too large or too tangled/);
+  const lone = { name: 'sheet', color: null, positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: Uint32Array.from([0, 1, 2]) };   // a single triangle: filling gives a flat double skin, zero volume
+  assert.equal(repairPart(lone).report.closed, false);
+});
+
+test('repair: a repaired model can then be cut', async () => {
+  const broken = dropTriangles(slab()[0], [2, 3]);
+  await assert.rejects(cutHole([broken], { x: 0, y: 0, diameter: 5 }), /not a closed/);
+  const { part } = repairPart(broken);
+  const cut = await cutHole([part], { x: 0, y: 0, diameter: 5 });
+  assert.ok(cut.touched && closed(cut.parts));
+});

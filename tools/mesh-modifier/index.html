@@ -13,6 +13,9 @@
     #partList { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; }
     #partList li { display: flex; gap: 8px; align-items: center; margin: 2px 0; }
     #partList .swatch { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
+    #partList input[type=color] { width: 30px; height: 24px; margin: 0; padding: 1px; flex: none; }
+    #partList input[type=checkbox] { flex: none; }
+    #partList .off { opacity: 0.45; text-decoration: line-through; }
     .rotbar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
     .rotbar button { padding: 4px 8px; font-size: 13px; }
   </style>
@@ -22,7 +25,8 @@
       "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
       "opentype.js": "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.js",
-      "polygon-clipping": "https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm"
+      "polygon-clipping": "https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm",
+      "manifold-3d": "https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/manifold.js"
     }
   }
   </script>
@@ -44,6 +48,7 @@
         </label>
         <small class="muted">3MF files carry their own units, so leave this on millimetres for them. For an STL, pick what the model was designed in. You can also drag a file onto the preview.</small>
         <ul id="partList"></ul>
+        <small class="muted" id="partHint" hidden>Untick a part to leave it out, or change its colour. Colours go into the 3MF and the preview.</small>
       </fieldset>
 
       <fieldset>
@@ -64,6 +69,7 @@
         </div>
         <div class="rotbar">
           <button type="button" data-rot="rotX">X +90</button><button type="button" data-rot="rotY">Y +90</button><button type="button" data-rot="rotZ">Z +90</button>
+          <button type="button" id="layFlat" title="Rotate so the largest flat face lies on the bed">Lay flat</button>
           <button type="button" id="resetXform">Reset</button>
         </div>
         <label class="inline"><input type="checkbox" id="mirrorX"> Mirror left-right (X)</label>
@@ -72,6 +78,43 @@
         <label class="inline"><input type="checkbox" id="center" checked> Centre on the bed</label>
         <label class="inline"><input type="checkbox" id="onBed" checked> Sit on the bed (lowest point at Z = 0)</label>
         <small class="muted">Scaling is along the printer's X, Y, Z after rotating. Turn off "Keep proportions" to stretch one direction. Tabs and labels are placed on the model as shown here.</small>
+      </fieldset>
+
+      <fieldset>
+        <legend><label class="inline" style="margin:0"><input type="checkbox" id="holeOn"> Drill a hole</label></legend>
+        <div id="holeOptions" hidden>
+          <div class="row">
+            <label>Left / right (mm) <input type="number" id="holeX" value="0" step="1"></label>
+            <label>Front / back (mm) <input type="number" id="holeY" value="0" step="1"></label>
+          </div>
+          <div class="row">
+            <label>Diameter (mm) <input type="number" id="holeD" value="5" min="1" max="100" step="0.5"></label>
+            <label>Depth (mm, 0 = all the way) <input type="number" id="holeDepth" value="0" min="0" step="0.5"></label>
+          </div>
+          <small class="muted">A round hole straight down from the top, measured from the model's centre. Needs a closed (watertight) model. For a hole at the edge to hang from, the hanging tab below is usually stronger.</small>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend><label class="inline" style="margin:0"><input type="checkbox" id="splitOn"> Cut in two</label></legend>
+        <div id="splitOptions" hidden>
+          <label>Cut at height (mm) <input type="number" id="splitZ" value="10" min="1" step="0.5"></label>
+          <label>Keep
+            <select id="splitKeep"><option value="both">Both halves, laid out side by side</option><option value="lower">Only the lower half</option><option value="upper">Only the upper half (cut face down)</option></select>
+          </label>
+          <div id="splitPegOptions">
+            <label class="inline"><input type="checkbox" id="splitPegs" checked> Alignment pegs and sockets</label>
+            <div class="row">
+              <label>Peg diameter (mm) <input type="number" id="pegD" value="5" min="2" max="20" step="0.5"></label>
+              <label>Peg height (mm) <input type="number" id="pegH" value="4" min="1" max="15" step="0.5"></label>
+            </div>
+            <div class="row">
+              <label>Socket clearance (mm) <input type="number" id="pegClear" value="0.25" min="0" max="1" step="0.05"></label>
+              <label>Gap between halves (mm) <input type="number" id="splitGap" value="8" min="2" max="50" step="1"></label>
+            </div>
+          </div>
+          <small class="muted">Cut after the size and rotation above. The upper half is dropped onto the bed so both pieces print flat on their cut faces. The pegs are a separate part on the lower half; the sockets are cut into the upper half. Needs a closed (watertight) model.</small>
+        </div>
       </fieldset>
 
       <fieldset>
@@ -99,22 +142,25 @@
       </fieldset>
 
       <fieldset>
-        <legend><label class="inline" style="margin:0"><input type="checkbox" id="labelOn"> Add raised text</label></legend>
+        <legend><label class="inline" style="margin:0"><input type="checkbox" id="labelOn"> Add text</label></legend>
         <div id="labelOptions" hidden>
+          <label>Style
+            <select id="labelMode"><option value="raised">Raised (added on top)</option><option value="engraved">Engraved (cut into the surface)</option></select>
+          </label>
           <label>Text <input type="text" id="labelText" value="Handmade" autocomplete="off"></label>
           <label>Font <select id="font"></select></label>
           <label>Or upload a font <small>(.ttf .otf .woff)</small> <input type="file" id="fontFile" accept=".ttf,.otf,.woff"></label>
           <div class="row">
             <label>Text height (mm) <input type="number" id="labelHeight" value="8" min="3" max="100" step="0.5"></label>
-            <label>Raised by (mm) <input type="number" id="labelRaise" value="1" min="0.4" max="5" step="0.1"></label>
+            <label><span id="labelRaiseText">Raised by (mm)</span> <input type="number" id="labelRaise" value="1" min="0.4" max="5" step="0.1"></label>
           </div>
           <div class="row">
             <label>Left / right (mm) <input type="number" id="labelX" value="0" step="1"></label>
             <label>Front / back (mm) <input type="number" id="labelY" value="0" step="1"></label>
             <label>Turn (deg) <input type="number" id="labelRot" value="0" step="5"></label>
           </div>
-          <label>Text colour <input type="color" id="labelColor" value="#111111"></label>
-          <small class="muted">Text is added to the highest surface under it. Put it on a flat area; you will see a warning if the surface is uneven or the text hangs past the edge.</small>
+          <label id="labelColorRow">Text colour <input type="color" id="labelColor" value="#111111"></label>
+          <small class="muted">Text goes on the highest surface under it. Put it on a flat area; you will see a warning if the surface is uneven or the text hangs past the edge. Engraving needs a closed (watertight) model and leaves at least 0.8 mm of floor.</small>
         </div>
       </fieldset>
 
@@ -122,8 +168,16 @@
         <button id="downloadStl" class="primary" disabled>Download STL</button>
         <button id="download3mf" class="primary secondary" type="button" disabled>Download 3MF</button>
       </div>
+      <div id="extraList" class="info"></div>
       <div id="error" class="error" hidden></div>
       <div id="warnings"></div>
+      <div id="repairBox" hidden>
+        <div class="row">
+          <button id="repair" type="button" class="small" title="Merge duplicate points, remove bad triangles, fix inside-out faces and fill small holes">Repair open edges</button>
+          <button id="undoRepair" type="button" class="small" hidden>Undo repair</button>
+        </div>
+        <div id="repairReport" class="info"></div>
+      </div>
     </section>
 
     <section class="preview">
@@ -141,7 +195,9 @@
           <li><b>Everything stays in your browser.</b> The file is read on this page and never uploaded.</li>
           <li><b>3MF keeps its parts and colours.</b> Each object in a 3MF stays its own part with its name and colour, and a mesh painted in several colours becomes one part per colour. Added tabs and text are extra parts, so a 3MF download keeps them separate for multi-colour printing. An STL has no colours, so everything is merged into one shell.</li>
           <li><b>What a 3MF loses:</b> slicer project settings (print profiles, filament assignments, support painting) are not read. Re-assign filaments in your slicer after opening the result.</li>
-          <li><b>Check the model first:</b> the line under the preview reports open edges. A model that is not watertight may slice badly, and this tool does not repair it.</li>
+          <li><b>Check the model first:</b> the line under the preview reports open edges. A model that is not watertight may slice badly, and cannot be cut. The Repair button merges duplicate points, removes bad triangles, fixes inside-out faces and fills small holes; it only says a part is fixed when it really is closed afterwards, and you can undo it. It cannot fix large missing areas or self-intersecting models. A part that was inside-out (its faces pointing inwards) is turned the right way round automatically, and you are told.</li>
+          <li><b>Lay flat</b> turns the model so its largest flat face rests on the bed, which is usually the best print orientation for a model that was saved on its side.</li>
+          <li><b>Cuts</b> (hole, engraving, cut in two) use a 3D geometry engine (manifold-3d, about 0.5 MB) that is only downloaded the first time you turn one on. They need every part to be a closed solid; the page tells you which part is not.</li>
           <li><b>Hanging tabs</b> are added at the model's outline at bed level, so the model should sit on the bed (the default) and have a flat bottom at that edge.</li>
           <li>Results are always in millimetres, Z up, on the bed at Z = 0.</li>
         </ul>

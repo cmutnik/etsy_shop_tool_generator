@@ -142,11 +142,12 @@ export function surfaceHeights(parts, samples) {
 }
 
 /**
- * Raised text on the model's top surface. opts: { font, text, height, raise, x, y, rotate }
- * `height` is the text's ink height in mm; (x, y) is the centre of the text relative to the model's centre.
- * Returns { geometry, warnings } or throws.
+ * Where text goes on the model's top surface. opts: { font, text, height, raise, x, y, rotate }
+ * `height` is the text's ink height in mm; `raise` is how far the text stands up (or, for engraving, how deep it cuts);
+ * (x, y) is the centre of the text relative to the model's centre.
+ * Returns { groups, top, warnings } (the merged outlines, the surface height they sit on) or throws.
  */
-export function buildLabel(parts, { font, text, height, raise, x, y, rotate = 0 }) {
+export function placeLabel(parts, { font, text, height, raise, x, y, rotate = 0 }) {
   if (!font) throw new Error('The label font is not loaded yet.');
   if (!text || !text.trim()) throw new Error('Enter the label text.');
   if (!(height >= 3)) throw new Error('Label text must be at least 3 mm tall to print.');
@@ -167,7 +168,11 @@ export function buildLabel(parts, { font, text, height, raise, x, y, rotate = 0 
   const top = Math.max(...hit), low = Math.min(...hit), warnings = [];
   if (hit.length < samples.length) warnings.push('Part of the text hangs past the edge of the model.');
   if (top - low > 0.3) warnings.push(`The surface under the text is not flat (it varies by ${(top - low).toFixed(1)} mm), so the text may float or sink in places. Place it on a flat area.`);
-  const SINK = 0.3;
-  const geometry = extrudeShapes(groupsToShapes(groups), raise + SINK, top - SINK);
-  return { geometry, warnings, top };
+  return { groups, top, warnings };
+}
+
+/** Raised text: the outlines from placeLabel() extruded up from 0.3 mm inside the surface. Returns { geometry, warnings, top } or throws. */
+export function buildLabel(parts, opts) {
+  const { groups, top, warnings } = placeLabel(parts, opts), SINK = 0.3;
+  return { geometry: extrudeShapes(groupsToShapes(groups), opts.raise + SINK, top - SINK), warnings, top };
 }

@@ -21,10 +21,16 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 
 - **Open** an `.stl` (binary or ASCII) or `.3mf`, by file picker or drag and drop. The file is read in the page and never uploaded.
 - **Size and orientation:** type a width, depth or height in mm (or a percentage), with or without keeping proportions; rotate in 90-degree steps or any angle; mirror; centre on the bed and drop the lowest point to Z = 0; inch / cm files converted to mm.
+- **Lay flat:** one click turns the model so its largest flat face rests on the bed.
+- **Parts:** each part of a multi-part model can be left out or recoloured. A part that was inside-out is turned the right way round automatically.
 - **Hanging tab:** a ring (round, rounded square, hexagon or lanyard slot) fused to the model's edge at bed level, so it prints flat with no supports. The edge is found from the real mesh, so it works on round and irregular models. Wall, overlap and hole clearance are checked with plain messages.
-- **Raised text:** any of the stamp fonts (or your own) set on the model's top surface, with warnings if the surface is uneven or the text hangs past the edge.
+- **Raised or engraved text:** any of the stamp fonts (or your own) set on the model's top surface, either added on top or cut into it (keeping at least 0.8 mm of floor), with warnings if the surface is uneven or the text hangs past the edge.
+- **Drill a hole:** a round hole straight down through the model, or part-way, at any position.
+- **Cut in two:** split at a height and keep both halves (laid out side by side, each printing flat on its cut face), or just one. Optional alignment pegs on the lower half and matching sockets, with adjustable clearance, in the upper half. Also works as a flat-bottom cut.
 - **3MF fidelity:** every object stays its own part with its name and colour, build transforms and component assemblies are applied, and a mesh painted in several colours becomes one part per colour. Tabs and text export as extra parts for multi-colour printing. Slicer project settings (profiles, filament assignments) are not read.
-- Reports triangle count, volume and open edges. It does not repair meshes or cut them (a true 3D boolean is a later step; see the roadmap).
+- The cuts use [manifold-3d](https://github.com/elalish/manifold) (WASM, about 0.5 MB), downloaded only the first time you turn one on, and they need closed (watertight) parts; the page names any part that is not.
+- **Repair:** when a model has open edges, a button merges duplicate points, removes degenerate and duplicate triangles, turns inside-out faces round and fills small holes (including concave ones). It only reports a part as fixed when it really is a closed solid afterwards, tells you what it could not fix, and can be undone.
+- Reports triangle count, volume and open edges.
 
 ### Image Prep
 

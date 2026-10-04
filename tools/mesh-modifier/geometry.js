@@ -92,3 +92,53 @@ export function buildGroup(parts, extras = []) {
   for (const x of extras) add(x.name, x.label, x.color, x.geometry);
   return { group, parts: list };
 }
+
+/** Reverse every triangle's winding (turns an inside-out part the right way round). Returns a new part. */
+export function flipPart(part) {
+  const indices = part.indices.slice();
+  for (let t = 0; t < indices.length; t += 3) { const k = indices[t + 1]; indices[t + 1] = indices[t + 2]; indices[t + 2] = k; }
+  return { ...part, indices };
+}
+
+/**
+ * The rotation that lays the model's largest flat face on the bed, or null if there is nothing to lay down.
+ * Triangles are grouped by direction (to about 1 degree); the group with the most area wins.
+ * `parts` must be in their final orientation but unscaled.
+ */
+export function layFlatRotation(parts) {
+  const groups = new Map();
+  for (const p of parts) {
+    const pos = p.positions, idx = p.indices;
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+      const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2], vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, area2 = Math.hypot(nx, ny, nz);
+      if (area2 < 1e-12) continue;
+      const key = [nx, ny, nz].map(v => Math.round((v / area2) * 60)).join(',');
+      const g = groups.get(key) || { area: 0, n: [0, 0, 0] };
+      g.area += area2; g.n[0] += nx; g.n[1] += ny; g.n[2] += nz;
+      groups.set(key, g);
+    }
+  }
+  let best = null;
+  for (const g of groups.values()) if (!best || g.area > best.area) best = g;
+  if (!best) return null;
+  const n = new THREE.Vector3(...best.n).normalize();
+  return new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0, 0, -1)));
+}
+
+/**
+ * New rotation angles (degrees, for the page's X, Y, Z fields) that lay the largest face down, given the current rotation and mirror.
+ * The pipeline applies mirror after rotation, so the extra turn is expressed back in the pre-mirror frame.
+ */
+export function layFlatAngles(parts, { unit = 1, rotate = [0, 0, 0], mirror = [false, false, false] }) {
+  const cur = transformParts(parts, { unit, rotate, mirror, scale: [1, 1, 1], center: false, onBed: false });
+  const extra = layFlatRotation(cur.parts);
+  if (!extra) return null;
+  const rad = d => (d * Math.PI) / 180;
+  const R = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rad(rotate[0]), rad(rotate[1]), rad(rotate[2]), 'XYZ'));
+  const F = new THREE.Matrix4().makeScale(...mirror.map(m => (m ? -1 : 1)));
+  const next = F.clone().multiply(extra).multiply(F).multiply(R);               // F is its own inverse
+  const e = new THREE.Euler().setFromRotationMatrix(next, 'XYZ');
+  return [e.x, e.y, e.z].map(v => { const d = Math.round(((v * 180) / Math.PI) * 1e4) / 1e4; return Math.abs(d) < 1e-9 ? 0 : d; });
+}

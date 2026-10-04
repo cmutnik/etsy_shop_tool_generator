@@ -36,7 +36,7 @@
   {
     "id": "mesh-modifier",
     "title": "STL / 3MF Modifier",
-    "description": "Open an STL or 3MF, then resize, rotate, mirror, add a hanging tab or raised text. Keeps 3MF parts and colours.",
+    "description": "Open an STL or 3MF, then resize, rotate, mirror, drill holes, engrave or raise text, cut in two with pegs, or add a hanging tab. Keeps 3MF parts and colours.",
     "status": "live",
     "path": "mesh-modifier/"
   }

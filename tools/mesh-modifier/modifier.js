@@ -3,8 +3,10 @@ import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
 import { parseMesh, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
 import { loadFont, parseFont, populateFontSelect, FONTS } from '../../shared/js/fonts.js';
-import { transformParts, buildGroup, partStats, DEFAULT_COLOR } from './geometry.js';
-import { buildTab, buildLabel, TAB_STYLES, TAB_SIDES } from './attach.js';
+import { transformParts, buildGroup, partStats, boundsOfParts, flipPart, layFlatAngles, DEFAULT_COLOR } from './geometry.js';
+import { buildTab, buildLabel, placeLabel, TAB_STYLES, TAB_SIDES } from './attach.js';
+import { loadManifold, cutHole, cutText, splitModel } from './boolean3d.js';
+import { repairPart, describeRepair } from './repair.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
@@ -18,7 +20,7 @@ let source = null;         // { name, parts, stats }
 let scale = [1, 1, 1];
 let result = null;         // { group, meta, size }
 let font = null, fontRequested = false;
-let timer = null, framed = false, view = 'print';
+let timer = null, framed = false, view = 'print', buildId = 0, engineReady = false;
 
 const round = (v, d = 2) => +v.toFixed(d);
 
@@ -41,12 +43,16 @@ async function load(file) {
   if (!file) return;
   $('status').textContent = `Reading ${file.name}...`;
   try {
-    const parts = await parseMesh(file.name, await file.arrayBuffer());
-    const stats = parts.map(partStats);
+    let parts = await parseMesh(file.name, await file.arrayBuffer());
+    let stats = parts.map(partStats);
+    const inside = stats.filter(x => x.volume < 0).length;                     // inside-out parts: faces point inwards
+    if (inside) { parts = parts.map((p, i) => (stats[i].volume < 0 ? flipPart(p) : p)); stats = parts.map(partStats); }
     if (stats.reduce((s, x) => s + x.triangles, 0) > MAX_TRIANGLES) throw new Error('That model has too many triangles for the browser.');
-    source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name) };
+    source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name), flipped: inside, original: null, repairLog: [], include: parts.map(() => true), colors: parts.map(p => p.color) };
+    buildPartList();
     resetTransform();
     framed = false;
+    source.fileName = file.name;
     $('status').textContent = file.name;
     $('error').hidden = true;
     build();
@@ -68,6 +74,43 @@ function resetTransform() {
   $('unit').value = '1';
   for (const id of ['tabShift', 'labelX', 'labelY', 'labelRot']) $(id).value = 0;   // positions belong to the old model
 }
+
+function buildPartList() {
+  $('partHint').hidden = false;
+  $('partList').replaceChildren(...source.parts.map((p, i) => {
+    const li = document.createElement('li'), on = document.createElement('input'), col = document.createElement('input'), name = document.createElement('span');
+    on.type = 'checkbox'; on.checked = true; on.title = 'Include this part';
+    col.type = 'color'; col.value = source.colors[i] || DEFAULT_COLOR; col.title = 'Colour';
+    name.textContent = p.name;
+    on.addEventListener('change', () => { source.include[i] = on.checked; li.classList.toggle('off', !on.checked); framed = false; rebuild(); });
+    col.addEventListener('input', () => { source.colors[i] = col.value; rebuild(); });
+    li.append(on, col, name);
+    return li;
+  }));
+}
+
+// ---------- repair ----------
+$('repair').addEventListener('click', () => {
+  if (!source) return;
+  const before = source.parts.slice(), log = [];
+  let changed = false;
+  source.parts = source.parts.map((p, i) => {
+    if (!source.include[i] || source.stats[i].openEdges === 0) return p;
+    const { part, report } = repairPart(p);
+    log.push(describeRepair(p.name, report));
+    if (report.openAfter < report.openBefore) { changed = true; return part; }   // keep any improvement; leave a part alone if nothing got better
+    return p;
+  });
+  if (changed) { source.original = source.original || before; source.stats = source.parts.map(partStats); }
+  source.repairLog = log;
+  build();
+});
+$('undoRepair').addEventListener('click', () => {
+  if (!source?.original) return;
+  source.parts = source.original; source.original = null; source.repairLog = [];
+  source.stats = source.parts.map(partStats);
+  build();
+});
 
 // ---------- size controls ----------
 const SIZE_IDS = ['sizeX', 'sizeY', 'sizeZ'];
@@ -91,6 +134,14 @@ document.querySelectorAll('[data-rot]').forEach(b => b.addEventListener('click',
   el.value = v > 180 ? v - 360 : v;
   rebuild();
 }));
+$('layFlat').addEventListener('click', () => {
+  if (!source) return;
+  const used = source.parts.filter((_, i) => source.include[i]);
+  const angles = layFlatAngles(used, { unit: num('unit'), rotate: ['rotX', 'rotY', 'rotZ'].map(id => parseFloat($(id).value) || 0), mirror: ['mirrorX', 'mirrorY', 'mirrorZ'].map(id => $(id).checked) });
+  if (!angles) return;
+  ['rotX', 'rotY', 'rotZ'].forEach((id, k) => { $(id).value = angles[k]; });
+  rebuild();
+});
 $('resetXform').addEventListener('click', () => { if (source) { resetTransform(); rebuild(); } });
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
   view = b.dataset.view;
@@ -111,42 +162,87 @@ function syncUI() {
   $('tabOptions').hidden = !$('tabOn').checked;
   $('labelOptions').hidden = !$('labelOn').checked;
   $('tabSlotRow').hidden = $('tabStyle').value !== 'slot';
+  $('holeOptions').hidden = !$('holeOn').checked;
+  $('splitOptions').hidden = !$('splitOn').checked;
+  $('splitPegOptions').hidden = $('splitKeep').value !== 'both';
+  const engraved = $('labelMode').value === 'engraved';
+  $('labelRaiseText').textContent = engraved ? 'Cut depth (mm)' : 'Raised by (mm)';
+  $('labelColorRow').hidden = engraved;
   if ($('labelOn').checked && !font && !fontRequested) { fontRequested = true; selectFont(); }
 }
 
-function build() {
+async function build() {
   syncUI();
   if (!source) return;
+  const id = ++buildId;
   const rot = ['rotX', 'rotY', 'rotZ'].map(id => parseFloat($(id).value) || 0);
-  const xf = transformParts(source.parts, {
+  const used = source.parts.map((p, i) => ({ ...p, color: source.colors[i] })).filter((_, i) => source.include[i]);
+  if (!used.length) { showError('Keep at least one part ticked.'); return; }
+  const xf = transformParts(used, {
     unit: num('unit'), rotate: rot, mirror: ['mirrorX', 'mirrorY', 'mirrorZ'].map(id => $(id).checked), scale,
     center: $('center').checked, onBed: $('onBed').checked,
   });
   const warnings = [], extras = [];
-  let error = '';
+  let error = '', parts = xf.parts, cutDone = false;
+  const engraved = $('labelOn').checked && $('labelMode').value === 'engraved';
   try {
+    // 3D cuts first (they change the model), then the parts that are only added on
+    if ($('holeOn').checked || engraved || $('splitOn').checked) {
+      if (!engineReady) $('status').textContent = 'Loading the cutting engine (about 0.5 MB)...';
+      await loadManifold();
+      engineReady = true;
+      if (id !== buildId) return;
+      $('status').textContent = source.fileName || '';
+      if ($('holeOn').checked) {
+        const h = await cutHole(parts, { x: num('holeX') || 0, y: num('holeY') || 0, diameter: num('holeD'), depth: num('holeDepth') || null });
+        parts = h.parts; cutDone = true;
+        if (!h.touched) warnings.push('The hole does not touch the model. Move it onto the model.');
+      }
+      if (engraved && font) {
+        const l = placeLabel(parts, { font, text: $('labelText').value, height: num('labelHeight'), raise: num('labelRaise'), x: num('labelX') || 0, y: num('labelY') || 0, rotate: num('labelRot') || 0 });
+        const depth = num('labelRaise');
+        if (l.top - depth < 0.8) throw new Error(`The engraving is too deep: the surface is ${l.top.toFixed(1)} mm high and at least 0.8 mm of floor must remain. Use a depth under ${(l.top - 0.8).toFixed(1)} mm.`);
+        parts = await cutText(parts, l.groups, l.top - depth, l.top + 1); cutDone = true;
+        warnings.push(...l.warnings);
+      }
+      if ($('splitOn').checked) {
+        const sp = await splitModel(parts, {
+          z: num('splitZ'), keep: $('splitKeep').value, pegs: $('splitPegs').checked, pegDiameter: num('pegD'), pegHeight: num('pegH'),
+          clearance: num('pegClear'), gap: num('splitGap'),
+        });
+        parts = sp.parts; cutDone = true;
+        warnings.push(...sp.warnings);
+      }
+      if (id !== buildId) return;
+    }
+    const size = boundsOfParts(parts).size;
     if ($('tabOn').checked) {
-      const t = buildTab(xf.parts, xf.size, {
+      const t = buildTab(parts, size, {
         style: $('tabStyle').value, side: $('tabSide').value, hole: num('tabHole'), wall: num('tabWall'), slotLength: num('tabSlot'),
         thickness: num('tabThickness'), overlap: num('tabOverlap'), shift: num('tabShift') || 0,
       });
       extras.push({ name: 'tab', label: 'Hanging tab', color: $('tabColor').value, geometry: t.geometry });
       warnings.push(...t.warnings);
     }
-    if ($('labelOn').checked && font) {
-      const l = buildLabel(xf.parts, {
+    if ($('labelOn').checked && !engraved && font) {
+      const l = buildLabel(parts, {
         font, text: $('labelText').value, height: num('labelHeight'), raise: num('labelRaise'),
         x: num('labelX') || 0, y: num('labelY') || 0, rotate: num('labelRot') || 0,
       });
       extras.push({ name: 'label', label: 'Raised text', color: $('labelColor').value, geometry: l.geometry });
       warnings.push(...l.warnings);
     }
-  } catch (e) { error = e.message || String(e); }
+  } catch (e) {
+    if (id !== buildId) return;
+    error = e.message || String(e);
+    $('status').textContent = source.fileName || '';
+    parts = xf.parts; extras.length = 0; cutDone = false;                    // show the model without the change that failed
+  }
 
-  const { group, parts: meta } = buildGroup(xf.parts, extras);
+  const { group, parts: meta } = buildGroup(parts, extras);
   viewer.setObject(group);
-  const [w, d, h] = xf.size;
-  result = { group, meta, size: xf.size, unscaledSize: xf.unscaledSize, sizeObj: { width: w, depth: d, height: h }, colored: xf.parts.some(p => p.color) };
+  const [w, d, h] = boundsOfParts(parts).size;
+  result = { group, meta, size: xf.size, unscaledSize: xf.unscaledSize, sizeObj: { width: w, depth: d, height: h }, colored: parts.some(p => p.color) };
   if (!framed) { framed = true; viewer.resize(); viewer.setView(view, result.sizeObj); }
   showError(error);
 
@@ -156,27 +252,37 @@ function build() {
   if (document.activeElement !== $('scalePct')) $('scalePct').value = uniform ? round(scale[0] * 100) : '';
   $('scalePct').placeholder = uniform ? '' : 'mixed';
 
-  const tris = source.stats.reduce((s, x) => s + x.triangles, 0), vol = source.stats.reduce((s, x) => s + x.volume, 0);
-  const open = source.stats.reduce((s, x) => s + x.openEdges, 0);
+  const kept = cutDone ? parts.map(partStats) : source.stats.filter((_, i) => source.include[i]);
+  const tris = kept.reduce((s, x) => s + x.triangles, 0), vol = kept.reduce((s, x) => s + x.volume, 0);
+  const open = kept.reduce((s, x) => s + x.openEdges, 0);
   const u = num('unit') * Math.cbrt(scale[0] * scale[1] * scale[2]);
-  $('info').textContent = `${round(w, 1)} x ${round(d, 1)} x ${round(h, 1)} mm  |  ${tris.toLocaleString()} triangles  |  about ${round((vol * Math.pow(u, 3)) / 1000, 1)} cm³ of material (solid)  |  ${source.parts.length} part${source.parts.length === 1 ? '' : 's'}`;
+  $('info').textContent = `${round(w, 1)} x ${round(d, 1)} x ${round(h, 1)} mm  |  ${tris.toLocaleString()} triangles  |  about ${round((vol * Math.pow(u, 3)) / 1000, 1)} cm³ of material (solid)  |  ${parts.length} part${parts.length === 1 ? '' : 's'}`;
 
-  if (open) warnings.unshift(`This model is not watertight (${open.toLocaleString()} open or shared edges). It may slice badly; repair it in a mesh tool if the slicer complains.`);
+  if (source.flipped) warnings.unshift(`${source.flipped} part${source.flipped === 1 ? ' was' : 's were'} inside-out (faces pointing inwards) and ${source.flipped === 1 ? 'has' : 'have'} been turned the right way round.`);
+  const srcOpen = source.stats.some((x, i) => source.include[i] && x.openEdges > 0);
+  $('repairBox').hidden = !(srcOpen || source.original);
+  $('repair').hidden = !srcOpen;
+  $('undoRepair').hidden = !source.original;
+  $('repairReport').replaceChildren(...source.repairLog.map(t => Object.assign(document.createElement('div'), { textContent: t })));
+  if (open) warnings.unshift(`This model is not watertight (${open.toLocaleString()} open or shared edges). It may slice badly and cannot be cut. Try "Repair open edges" below.`);
   const maxDim = Math.max(w, d, h);
   if (maxDim < 5) warnings.push(`The model is only ${round(maxDim, 2)} mm across. If it was made in centimetres or inches, change "The file's units".`);
   if (maxDim > 400) warnings.push(`The model is ${round(maxDim, 0)} mm across, bigger than most printers. Scale it down, or check "The file's units".`);
   $('warnings').replaceChildren(...warnings.map(t => Object.assign(document.createElement('div'), { textContent: t })));
 
-  $('partList').replaceChildren(...meta.map((m, i) => {
-    const li = document.createElement('li'), sw = document.createElement('span');
-    sw.className = 'swatch';
-    sw.style.background = (i < xf.parts.length ? xf.parts[i].color : extras[i - xf.parts.length].color) || DEFAULT_COLOR;
-    li.append(sw, document.createTextNode(m.label));
-    return li;
+  $('extraList').replaceChildren(...extras.map(x => {
+    const el = document.createElement('div'), sw = document.createElement('span');
+    sw.className = 'swatch'; sw.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;background:${x.color}`;
+    el.append(sw, document.createTextNode(`Added: ${x.label}`));
+    return el;
   }));
 }
 
-$('controls').addEventListener('input', e => { if (!SIZE_IDS.includes(e.target.id) && e.target.id !== 'scalePct' && e.target.id !== 'file' && e.target.id !== 'fontFile') rebuild(); });
+$('controls').addEventListener('input', e => {
+  if (e.target.closest('#partList')) return;                                   // handled by the part list itself
+  if (SIZE_IDS.includes(e.target.id) || ['scalePct', 'file', 'fontFile'].includes(e.target.id)) return;
+  rebuild();
+});
 
 // ---------- download ----------
 const outName = ext => `${(source?.name || 'model').replace(/[^\w.-]+/g, '-')}-modified.${ext}`;
