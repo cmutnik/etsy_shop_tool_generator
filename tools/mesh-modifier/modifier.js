@@ -1,9 +1,10 @@
 // Copyright (c) 2025 cmutnik
 import { createViewer } from '../../shared/js/viewer.js';
-import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
+import { exportSTL, export3MFCompressed, downloadBlob } from '../../shared/js/export.js';
 import { readModelFiles, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
 import { loadFont, parseFont, populateFontSelect, FONTS } from '../../shared/js/fonts.js';
-import { transformParts, buildGroup, partStats, boundsOfParts, flipPart, layFlatAngles, assignSlots, DEFAULT_COLOR } from './geometry.js';
+import { transformParts, buildGroup, partsStats, analyseParts, boundsOfParts, layFlatAngles, assignSlots, DEFAULT_COLOR } from './geometry.js';
+import { repairParts } from './repair-groups.js';
 import { buildTab, buildLabel, placeLabel, buildInfill, TAB_STYLES, TAB_SIDES } from './attach.js';
 import { loadManifold, cutHole, cutText, splitModel } from './boolean3d.js';
 import { repairPart, describeRepair } from './repair.js';
@@ -51,15 +52,17 @@ $('fontFile').addEventListener('change', async e => {
 });
 
 // ---------- loading ----------
+let lastFiles = [];
 async function load(files) {
   if (!files || !files.length) return;
+  lastFiles = [...files];
   $('status').textContent = 'Reading the file...';
   try {
-    const { file, parts: read, notes } = await readModelFiles(files);
+    const { file, parts: read, notes, painted } = await readModelFiles(lastFiles, { colors: parseInt($('paintColors').value, 10) || 6 });
+    $('paintRow').hidden = !painted;
     let parts = read;
-    let stats = parts.map(partStats);
-    const inside = stats.filter(x => x.volume < 0).length;                     // inside-out parts: faces point inwards
-    if (inside) { parts = parts.map((p, i) => (stats[i].volume < 0 ? flipPart(p) : p)); stats = parts.map(partStats); }
+    const { parts: turned, stats, flipped: inside } = analyseParts(parts);     // inside-out solids are turned the right way round; colour patches are judged together
+    parts = turned;
     if (stats.reduce((s, x) => s + x.triangles, 0) > MAX_TRIANGLES) throw new Error('That model has too many triangles for the browser.');
     source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name), notes, flipped: inside, original: null, repairLog: [], include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null) };
     buildPartList();
@@ -76,6 +79,7 @@ async function load(files) {
   }
 }
 $('file').addEventListener('change', e => load(e.target.files));
+$('paintColors').addEventListener('change', () => load(lastFiles));
 const drop = $('viewport');
 drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drop'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('drop'));
@@ -116,26 +120,38 @@ $('holeDir').addEventListener('change', () => {
 });
 
 // ---------- repair ----------
-$('repair').addEventListener('click', () => {
+$('repair').addEventListener('click', async () => {
   if (!source) return;
-  const before = source.parts.slice(), log = [];
-  let changed = false;
-  source.parts = source.parts.map((p, i) => {
-    if (!source.include[i] || source.stats[i].openEdges === 0) return p;
-    const { part, report } = repairPart(p);
-    log.push(describeRepair(p.name, report));
-    if (report.openAfter < report.openBefore) { changed = true; return part; }   // keep any improvement; leave a part alone if nothing got better
-    return p;
-  });
-  if (changed) { source.original = source.original || before; source.stats = source.parts.map(partStats); partsVersion++; }
-  source.repairLog = log;
-  build();
-  commit();
+  const keepStatus = $('status').textContent;
+  $('status').textContent = 'Repairing... a model with millions of triangles can take several seconds.';
+  $('repair').disabled = true;
+  await new Promise(r => setTimeout(r, 30));                                   // let the browser show the message before the work starts
+  try {
+    const before = { parts: source.parts, include: source.include, colors: source.colors, slots: source.slots };
+    const { list, changed, log } = repairParts(source.parts, source.include);   // colour patches of one surface are repaired as one solid
+    if (changed) {
+      source.original = source.original || before;
+      const { include, colors, slots } = source;
+      source.parts = list.map(x => x.part); source.include = list.map(x => include[x.from]); source.colors = list.map(x => colors[x.from]); source.slots = list.map(x => slots[x.from]);
+      source.stats = partsStats(source.parts); partsVersion++;
+      buildPartList();
+      source.include.forEach((on, i) => { document.querySelectorAll('#partList li')[i]?.classList.toggle('off', !on); const box = document.querySelectorAll('#partList li input[type=checkbox]')[i]; if (box) box.checked = on; });
+    }
+    source.repairLog = log;
+    build();
+    commit();
+  } catch (e) {
+    showError(`Repair failed: ${e.message || e}`);                               // never leave the button silently doing nothing
+  } finally {
+    $('repair').disabled = false;
+    if ($('status').textContent.startsWith('Repairing')) $('status').textContent = keepStatus;
+  }
 });
 $('undoRepair').addEventListener('click', () => {
   if (!source?.original) return;
-  source.parts = source.original; source.original = null; source.repairLog = [];
-  source.stats = source.parts.map(partStats);
+  Object.assign(source, source.original, { original: null, repairLog: [] });
+  source.stats = partsStats(source.parts);
+  buildPartList();
   partsVersion++;
   build();
   commit();
@@ -179,7 +195,7 @@ document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click'
 }));
 
 // ---------- undo / redo ----------
-const DERIVED = ['sizeX', 'sizeY', 'sizeZ', 'scalePct'];                         // shown from the real model, kept in `scale`, so not a separate edit
+const DERIVED = ['sizeX', 'sizeY', 'sizeZ', 'scalePct', 'paintColors'];                         // shown from the real model, kept in `scale`, so not a separate edit
 const fieldEls = () => [...document.querySelectorAll('#controls input[id], #controls select[id], #controls textarea[id]')].filter(el => el.type !== 'file' && !DERIVED.includes(el.id));
 
 function snapshot() {
@@ -349,7 +365,7 @@ async function build() {
   if (document.activeElement !== $('scalePct')) $('scalePct').value = uniform ? round(scale[0] * 100) : '';
   $('scalePct').placeholder = uniform ? '' : 'mixed';
 
-  const kept = cutDone ? parts.map(partStats) : source.stats.filter((_, i) => source.include[i]);
+  const kept = cutDone ? partsStats(parts) : source.stats.filter((_, i) => source.include[i]);
   const tris = kept.reduce((s, x) => s + x.triangles, 0), vol = kept.reduce((s, x) => s + x.volume, 0);
   const open = kept.reduce((s, x) => s + x.openEdges, 0);
   const u = num('unit') * Math.cbrt(scale[0] * scale[1] * scale[2]);
@@ -385,7 +401,18 @@ $('controls').addEventListener('input', e => {
 // ---------- download ----------
 const outName = ext => `${(source?.name || 'model').replace(/[^\w.-]+/g, '-')}-modified.${ext}`;
 $('downloadStl').addEventListener('click', () => downloadBlob(exportSTL(result.group), outName('stl')));
-$('download3mf').addEventListener('click', () => {
+$('download3mf').addEventListener('click', async () => {
   const keep = result.meta.length > 1 || result.colored;                          // one plain part: a plain 3MF
-  downloadBlob(export3MF(result.group, { title: source.name, parts: keep ? result.meta : null }), outName('3mf'));
+  const old = $('status').textContent;
+  $('status').textContent = 'Building the 3MF...';
+  $('download3mf').disabled = true;
+  await new Promise(r => setTimeout(r, 30));                                      // let the message show before the heavy work
+  try {
+    downloadBlob(await export3MFCompressed(result.group, { title: source.name, parts: keep ? result.meta : null }), outName('3mf'));
+  } catch (e) {
+    showError(`Could not build the 3MF: ${e.message || e}`);
+  } finally {
+    $('download3mf').disabled = !!$('error').textContent;
+    $('status').textContent = old;
+  }
 });

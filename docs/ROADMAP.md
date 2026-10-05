@@ -37,6 +37,6 @@ Remove each `invite2svg/` page once its replacement ships.
 ## Ideas
 - Image Prep: registration marks / alignment keys on the layers and the matching stamp bases, a hand-off to the QR keychain/stand banners, undo for mark strokes, batch processing of several pictures, and moving the heavy work into a Web Worker for very large images.
 - Stamp: print all colour layers as one multi-part 3MF with an alignment frame.
-- STL / 3MF modifier, next steps: tougher repair (non-manifold edges, self-intersections, very large holes); reading Bambu's volume-range extruder layout (only the layout export3MF writes is read and tested).
+- STL / 3MF modifier, next steps: tougher repair (self-intersections, very large holes); reading Bambu's volume-range extruder layout (only the layout export3MF writes is read and tested).
 - Stamp: curved/circular text for round seals, multiple-colour 3MF (separate relief/base objects), saved presets.
 - Shop-owner extras: batch export (one STL per line of a CSV, zipped - `zipStore()` in `shared/js/export.js` is reusable).

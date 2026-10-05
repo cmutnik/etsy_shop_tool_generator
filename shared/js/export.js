@@ -3,9 +3,9 @@
 // so a tool's model should already be oriented the way it should print (z up, on the bed at z = 0).
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { downloadBlob } from './download.js';
-import { zipStore, crc32 } from './zip.js';
+import { zipStore, zipDeflate, crc32 } from './zip.js';
 
-export { downloadBlob, zipStore, crc32 }; // re-exported so existing imports keep working
+export { downloadBlob, zipStore, zipDeflate, crc32 }; // re-exported so existing imports keep working
 
 export function exportSTL(object) {
   const data = new STLExporter().parse(object, { binary: true });
@@ -64,7 +64,7 @@ const RELS = '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http
  * written only as hints for other viewers. The actual colour that prints is whatever filament is loaded in
  * that slot. (This layout is verified in Orca.)
  */
-export function export3MF(object, { title = 'model', parts = null } = {}) {
+function files3MF(object, { title = 'model', parts = null } = {}) {
   const { verts, tris, triMat, triName, palette } = collectMesh(object);
   const vertexXml = ids => ids.map(i => `<vertex x="${verts[i * 3]}" y="${verts[i * 3 + 1]}" z="${verts[i * 3 + 2]}"/>`).join('');
   const files = [['[Content_Types].xml', CONTENT_TYPES], ['_rels/.rels', RELS]];
@@ -121,5 +121,15 @@ ${objects}<object id="${parentId}" name="${esc(title)}" type="model"><components
     files.push(['Metadata/model_settings.config', `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n  <object id="${parentId}">\n${settings}  </object>\n</config>`]);
   }
   files.push(['3D/3dmodel.model', model]);
-  return new Blob([zipStore(files)], { type: 'model/3mf' });
+  return files;
+}
+
+/** The 3MF as a Blob, stored uncompressed (synchronous; fine for the small models the generators make). */
+export function export3MF(object, opts = {}) {
+  return new Blob([zipStore(files3MF(object, opts))], { type: 'model/3mf' });
+}
+
+/** The same 3MF with its model deflated: several times smaller for big meshes. Async. Same options as export3MF. */
+export async function export3MFCompressed(object, opts = {}) {
+  return new Blob([await zipDeflate(files3MF(object, opts))], { type: 'model/3mf' });
 }

@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
 import { readModelFiles, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
-import { transformParts, buildGroup, partStats, boundsOfParts, flipPart, assignSlots, DEFAULT_COLOR } from '../mesh-modifier/geometry.js';
+import { transformParts, buildGroup, partsStats, analyseParts, boundsOfParts, assignSlots, DEFAULT_COLOR } from '../mesh-modifier/geometry.js';
 import { loadManifold } from '../mesh-modifier/boolean3d.js';
 import { makeFlexi, fromAxisFrame } from './flexi.js';
 import { simplifyParts, SOFT_LIMIT, HARD_LIMIT } from './prepare.js';
-import { repairPart, describeRepair } from '../mesh-modifier/repair.js';
+import { repairParts } from '../mesh-modifier/repair-groups.js';
 import { cutPositions } from './joints.js';
 
 const $ = id => document.getElementById(id);
@@ -26,15 +26,17 @@ const showWarnings = list => $('warnings').replaceChildren(...list.map(t => Obje
 const round = (v, d = 1) => +v.toFixed(d);
 
 // ---------- loading ----------
+let lastFiles = [];
 async function load(files) {
   if (!files || !files.length) return;
+  lastFiles = [...files];
   $('status').textContent = 'Reading the file...';
   try {
-    const { file, parts: read, notes } = await readModelFiles(files);
+    const { file, parts: read, notes, painted } = await readModelFiles(lastFiles, { colors: parseInt($('paintColors').value, 10) || 6 });
+    $('paintRow').hidden = !painted;
     let parts = read;
-    let stats = parts.map(partStats);
-    const inside = stats.filter(x => x.volume < 0).length;                     // inside-out parts: faces point inwards
-    if (inside) { parts = parts.map((p, i) => (stats[i].volume < 0 ? flipPart(p) : p)); stats = parts.map(partStats); }
+    const { parts: turned, stats } = analyseParts(parts);                      // inside-out solids are turned the right way round; colour patches are judged together
+    parts = turned;
     const tris = stats.reduce((s, x) => s + x.triangles, 0);
     if (tris > MAX_TRIANGLES) throw new Error('That model has too many triangles for the browser.');
     source = { name: file.name.replace(/\.[^.]+$/, ''), fileName: file.name, notes, original: null, parts, stats, include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null) };
@@ -54,6 +56,7 @@ async function load(files) {
   }
 }
 $('file').addEventListener('change', e => load(e.target.files));
+$('paintColors').addEventListener('change', () => load(lastFiles));
 const drop = $('viewport');
 drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drop'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('drop'));
@@ -136,20 +139,25 @@ function draw() {
 $('controls').addEventListener('input', e => { if (!e.target.closest('#partList') && e.target.id !== 'file') refresh(); });
 
 // ---------- fix the model: repair, reduce ----------
-const keepOriginal = () => { source.original ||= { parts: source.parts, stats: source.stats }; };
+const snapshot = () => ({ parts: source.parts, stats: source.stats, include: source.include, colors: source.colors, slots: source.slots });
+const keepOriginal = () => { source.original ||= snapshot(); };
+/** Take a new parts list ({ part, from } entries) and carry each part's tick, colour and slot over from the part it came from. */
+function adopt(list) {
+  const { include, colors, slots } = source;
+  source.parts = list.map(x => x.part);
+  source.include = list.map(x => include[x.from]);
+  source.colors = list.map(x => colors[x.from]);
+  source.slots = list.map(x => slots[x.from]);
+  source.stats = partsStats(source.parts);
+  buildPartList();
+  source.include.forEach((on, i) => { document.querySelectorAll('#partList li')[i]?.classList.toggle('off', !on); const box = document.querySelectorAll('#partList li input[type=checkbox]')[i]; if (box) box.checked = on; });
+}
 const fixDone = lines => { $('fixReport').replaceChildren(...lines.map(t => Object.assign(document.createElement('div'), { textContent: t }))); framed = false; refresh(); };
 $('repair').addEventListener('click', () => {
   if (!source) return;
-  const before = source.parts.slice(), log = [];
-  let changed = false;
-  source.parts = source.parts.map((p, i) => {
-    if (!source.include[i] || source.stats[i].openEdges === 0) return p;
-    const { part, report } = repairPart(p);
-    log.push(describeRepair(p.name, report));
-    if (report.openAfter < report.openBefore) { changed = true; return part; }
-    return p;
-  });
-  if (changed) { source.original ||= { parts: before, stats: source.stats }; source.stats = source.parts.map(partStats); }
+  const before = snapshot();
+  const { list, changed, log } = repairParts(source.parts, source.include);
+  if (changed) { source.original ||= before; adopt(list); }
   if (!log.length) log.push('Nothing to repair.');
   fixDone(log);
 });
@@ -161,12 +169,9 @@ $('reduce').addEventListener('click', async () => {
     $('status').textContent = 'Reducing triangles...';
     await new Promise(r => setTimeout(r, 30));
     const unitScale = num('unit') * ((num('scalePct') || 100) / 100);          // the limit is in mm, the file may not be
-    const used = source.parts.map((p, i) => ({ p, i })).filter(x => source.include[x.i]);
-    const r = await simplifyParts(used.map(x => x.p), { target: num('reduceTo') || 100000, maxDeviation: (num('maxDev') || 0.2) / unitScale });
-    keepOriginal();
-    const parts = source.parts.slice();
-    used.forEach((x, k) => { parts[x.i] = r.parts[k]; });
-    source.parts = parts; source.stats = parts.map(partStats);
+    const before = snapshot();
+    const r = await simplifyParts(source.parts, { include: source.include, target: num('reduceTo') || 100000, maxDeviation: (num('maxDev') || 0.2) / unitScale });
+    if (r.after !== r.before) { source.original ||= before; adopt(r.list); }
     const lines = [r.after === r.before ? `Already ${r.before.toLocaleString()} triangles: nothing to reduce.` : `${r.before.toLocaleString()} -> ${r.after.toLocaleString()} triangles; the surface moved by at most ${round(r.deviation * unitScale, 2)} mm.`];
     if (!r.reached) lines.push(`Could not get down to ${(num('reduceTo') || 100000).toLocaleString()} without moving the surface more than ${num('maxDev') || 0.2} mm. Allow a bigger move, or ask for more triangles.`);
     if (r.open.length) lines.push(`Not reduced because they are not closed: ${r.open.join(', ')}. Repair them first.`);
@@ -176,7 +181,8 @@ $('reduce').addEventListener('click', async () => {
 });
 $('undoFix').addEventListener('click', () => {
   if (!source?.original) return;
-  source.parts = source.original.parts; source.stats = source.original.stats; source.original = null;
+  Object.assign(source, source.original, { original: null });
+  buildPartList();
   fixDone(['Fixes undone.']);
 });
 

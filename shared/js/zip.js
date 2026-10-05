@@ -12,37 +12,64 @@ export function crc32(bytes) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-/** @param {[string, string | Uint8Array][]} files */
-export function zipStore(files) {
-  const enc = new TextEncoder();
+/** Lay out zip entries: [{ nameB, data (the bytes as stored), crc, size (uncompressed length), method (0 stored, 8 deflate) }]. */
+function writeZip(entries) {
   const chunks = [], central = [];
   let offset = 0;
-  for (const [name, content] of files) {
-    const nameB = enc.encode(name), data = typeof content === 'string' ? enc.encode(content) : content;
-    const crc = crc32(data);
+  for (const { nameB, data, crc, size, method } of entries) {
     const local = new DataView(new ArrayBuffer(30));
     local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true); // UTF-8 names
-    local.setUint16(8, 0, true); local.setUint16(10, 0, true); local.setUint16(12, 0x21, true); // stored, 1980-01-01
-    local.setUint32(14, crc, true); local.setUint32(18, data.length, true); local.setUint32(22, data.length, true);
+    local.setUint16(8, method, true); local.setUint16(10, 0, true); local.setUint16(12, 0x21, true); // 1980-01-01
+    local.setUint32(14, crc, true); local.setUint32(18, data.length, true); local.setUint32(22, size, true);
     local.setUint16(26, nameB.length, true); local.setUint16(28, 0, true);
     chunks.push(new Uint8Array(local.buffer), nameB, data);
     const cd = new DataView(new ArrayBuffer(46));
     cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true);
-    cd.setUint16(10, 0, true); cd.setUint16(12, 0, true); cd.setUint16(14, 0x21, true);
-    cd.setUint32(16, crc, true); cd.setUint32(20, data.length, true); cd.setUint32(24, data.length, true);
+    cd.setUint16(10, method, true); cd.setUint16(12, 0, true); cd.setUint16(14, 0x21, true);
+    cd.setUint32(16, crc, true); cd.setUint32(20, data.length, true); cd.setUint32(24, size, true);
     cd.setUint16(28, nameB.length, true); cd.setUint32(42, offset, true);
     central.push(new Uint8Array(cd.buffer), nameB);
     offset += 30 + nameB.length + data.length;
   }
   const cdSize = central.reduce((s, c) => s + c.length, 0);
   const end = new DataView(new ArrayBuffer(22));
-  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
   end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
   const all = [...chunks, ...central, new Uint8Array(end.buffer)];
   const out = new Uint8Array(all.reduce((s, c) => s + c.length, 0));
   let p = 0;
   for (const c of all) { out.set(c, p); p += c.length; }
   return out;
+}
+
+const bytesOf = content => (typeof content === 'string' ? new TextEncoder().encode(content) : content);
+
+/** @param {[string, string | Uint8Array][]} files */
+export function zipStore(files) {
+  const enc = new TextEncoder();
+  return writeZip(files.map(([name, content]) => { const data = bytesOf(content); return { nameB: enc.encode(name), data, crc: crc32(data), size: data.length, method: 0 }; }));
+}
+
+/** Smallest file worth compressing: below this the zip header costs more than deflate saves. */
+const DEFLATE_MIN = 1024;
+
+/**
+ * Like zipStore, but deflates every entry of 1 KB or more (browsers and Node 18+ do it natively through CompressionStream), which
+ * shrinks a mesh's XML several times over. Async because the compression is. Any zip reader, including slicers, opens the result.
+ * @param {[string, string | Uint8Array][]} files
+ */
+export async function zipDeflate(files) {
+  const enc = new TextEncoder(), entries = [];
+  for (const [name, content] of files) {
+    const data = bytesOf(content), crc = crc32(data);
+    let stored = data, method = 0;
+    if (data.length >= DEFLATE_MIN) {
+      const packed = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+      if (packed.length < data.length) { stored = packed; method = 8; }
+    }
+    entries.push({ nameB: enc.encode(name), data: stored, crc, size: data.length, method });
+  }
+  return writeZip(entries);
 }
 
 async function inflateRaw(raw) {

@@ -153,9 +153,9 @@ test('hook and loop: every cut separates, and the wide part under a narrow cut i
 
 test('simplifyParts: a heavy closed model comes down, stays closed, keeps its colour, and open parts are left alone', async () => {
   const { simplifyParts } = await import('../tools/flexi-maker/prepare.js');
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
   const w = await loadManifold();
   const sphere = w.Manifold.sphere(20, 500);                                    // 125,000 triangles
-  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
   const dense = { ...fromManifold(sphere, { name: 'Ball' }), name: 'Ball', color: '#CC0000' };
   sphere.delete();
   const open = box(0, 0, 0, 10, 10, 10, '#00AA00', 'Open');
@@ -164,15 +164,55 @@ test('simplifyParts: a heavy closed model comes down, stays closed, keeps its co
   assert.ok(r.before > 120000);
   assert.ok(r.after <= 20000 && r.reached, `reduced to ${r.after}`);
   assert.ok(r.deviation <= 0.3 + 1e-9);
-  assert.equal(r.parts[0].color, '#CC0000');
-  assert.equal(partStats(r.parts[0]).openEdges, 0, 'still a closed solid');
-  assert.equal(r.parts[1], open, 'the open part is untouched');
+  const [ball, kept] = r.list;
+  assert.equal(ball.part.color, '#CC0000');
+  assert.equal(partStats(ball.part).openEdges, 0, 'still a closed solid');
+  assert.equal(kept.part, open, 'the open part is untouched');
   assert.deepEqual(r.open, ['Open']);
-  // the surface barely moved: same volume to within a fraction of a percent
-  const v0 = partStats(dense).volume, v1 = partStats(r.parts[0]).volume;
+  const v0 = partStats(dense).volume, v1 = partStats(ball.part).volume;
   assert.ok(Math.abs(v1 - v0) / v0 < 0.01, `volume changed ${(100 * Math.abs(v1 - v0) / v0).toFixed(2)} %`);
   const small = await simplifyParts([open], { target: 100 });
   assert.equal(small.reached, true, 'already small enough: returned as is');
+});
+
+test('simplifyParts and repairParts keep the colours of a painted model (patches of one closed surface)', async () => {
+  const { simplifyParts } = await import('../tools/flexi-maker/prepare.js');
+  const { repairParts } = await import('../tools/mesh-modifier/repair-groups.js');
+  const { partsStats, analyseParts } = await import('../tools/mesh-modifier/geometry.js');
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+  const w = await loadManifold();
+  const sphere = w.Manifold.sphere(20, 300), whole = fromManifold(sphere, { name: 'S' });
+  sphere.delete();
+  const patch = red => {
+    const idx = [];
+    for (let t = 0; t < whole.indices.length; t += 3) {
+      const cx = [0, 1, 2].reduce((n, k) => n + whole.positions[whole.indices[t + k] * 3], 0) / 3;
+      if ((cx > 0) === red) idx.push(whole.indices[t], whole.indices[t + 1], whole.indices[t + 2]);
+    }
+    return { name: red ? 'Red' : 'Blue', color: red ? '#CC0000' : '#0000CC', positions: whole.positions, indices: Uint32Array.from(idx), group: 'g' };
+  };
+  const patches = [patch(true), patch(false)];
+  const stats = partsStats(patches);
+  assert.equal(stats[0].openEdges, 0, 'together the patches are closed, and that is reported once, on the first');
+  assert.equal(stats[1].openEdges, 0);
+  assert.ok(stats[0].volume > 30000 && stats[1].volume === 0, 'the whole sphere\'s volume, on the first patch');
+  assert.equal(analyseParts(patches).flipped, 0);
+
+  const r = await simplifyParts(patches, { target: 8000, maxDeviation: 0.3 });
+  assert.ok(r.reached && r.after <= 8000, `reduced to ${r.after}`);
+  assert.deepEqual(r.list.map(x => x.part.color).sort(), ['#0000CC', '#CC0000']);
+  const mean = c => { const p = r.list.find(x => x.part.color === c).part; const xs = [...p.positions].filter((_, i) => i % 3 === 0); return xs.reduce((a, b) => a + b, 0) / xs.length; };
+  assert.ok(mean('#CC0000') > 5 && mean('#0000CC') < -5, 'each colour stays on its own side');
+  assert.equal(partsStats(r.list.map(x => x.part))[0].openEdges, 0, 'still one closed surface');
+
+  // a hole punched in the surface: repairing the group fills it and keeps the colours
+  const holed = patches.map(p => ({ ...p }));
+  holed[0].indices = holed[0].indices.slice(3);
+  assert.ok(partsStats(holed)[0].openEdges > 0);
+  const fixed = repairParts(holed);
+  assert.ok(fixed.changed, fixed.log.join(' | '));
+  assert.deepEqual(fixed.list.map(x => x.part.color).sort(), ['#0000CC', '#CC0000']);
+  assert.equal(partsStats(fixed.list.map(x => x.part))[0].openEdges, 0, 'closed again');
 });
 
 test('a cut that falls between two separate parts says so instead of calling it a sliver', async () => {
@@ -181,4 +221,55 @@ test('a cut that falls between two separate parts says so instead of calling it 
   assert.equal(r.joints.length, 1, 'only the cut through a part gets a joint');
   assert.ok(r.warnings.some(w => /space between separate parts/.test(w)), r.warnings.join(' | '));
   assert.ok(!r.warnings.some(w => /sliver/.test(w)));
+});
+
+test('a painted model (colour patches of one closed surface) is cut whole and comes out coloured again', async () => {
+  const w = await loadManifold();
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+  const cyl = w.Manifold.cylinder(100, 12, 12, 48, false);                    // closed, ~200 triangles
+  const whole = fromManifold(cyl, { name: 'Tube' });
+  cyl.delete();
+  // two patches: the triangles on the +x side red, the rest blue: neither is closed on its own
+  const side = (red) => {
+    const idx = [];
+    for (let t = 0; t < whole.indices.length; t += 3) {
+      const cx = [0, 1, 2].reduce((s, k) => s + whole.positions[whole.indices[t + k] * 3], 0) / 3;
+      if ((cx > 0) === red) idx.push(whole.indices[t], whole.indices[t + 1], whole.indices[t + 2]);
+    }
+    return { name: red ? 'Red' : 'Blue', color: red ? '#CC0000' : '#0000CC', positions: whole.positions, indices: Uint32Array.from(idx), group: 'g1' };
+  };
+  const patches = [side(true), side(false)];
+  assert.ok(patches.every(p => partStats(p).openEdges > 0), 'the patches are open on their own');
+  for (const joint of ['hook', 'ball']) {
+    const r = await makeFlexi(patches, { axis: 'z', count: 3, joint });
+    assert.deepEqual([...new Set(r.parts.map(p => p.color))].sort(), ['#0000CC', '#CC0000'], `${joint}: both colours survive`);
+    for (const seg of [0, 1, 2]) {
+      const mean = c => { const ps = r.parts.filter(p => p.seg === seg && p.color === c), xs = ps.flatMap(p => [...p.positions].filter((_, i) => i % 3 === 0)); return xs.reduce((a, b) => a + b, 0) / xs.length; };
+      assert.ok(mean('#CC0000') > 1, `${joint} segment ${seg}: the red patch stays on the +x side (${mean('#CC0000').toFixed(1)})`);
+      assert.ok(mean('#0000CC') < -1, `${joint} segment ${seg}: the blue patch stays on the -x side (${mean('#0000CC').toFixed(1)})`);
+    }
+    assert.equal(new Set(r.parts.map(p => p.seg)).size, 3);
+  }
+});
+
+test('repairParts: a few pinched, non-manifold spots are cut out and filled when the normal repair cannot', async () => {
+  const { repairParts, stripBadEdges } = await import('../tools/mesh-modifier/repair-groups.js');
+  const { partsStats } = await import('../tools/mesh-modifier/geometry.js');
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+  const w = await loadManifold();
+  const sphere = w.Manifold.sphere(20, 64), base = fromManifold(sphere, { name: 'S', color: '#AA0000' });
+  sphere.delete();
+  // a fin: one extra triangle stuck on an existing edge, so that edge is shared by three triangles (non-manifold)
+  const a = base.indices[0], b = base.indices[1], extra = base.positions.length / 3;
+  const positions = new Float32Array(base.positions.length + 3);
+  positions.set(base.positions);
+  positions.set([base.positions[a * 3] + 50, base.positions[a * 3 + 1] + 50, base.positions[a * 3 + 2] + 50], base.positions.length);
+  const pinched = { ...base, positions, indices: Uint32Array.from([...base.indices, a, b, extra]) };
+  assert.ok(partsStats([pinched])[0].openEdges > 0, 'the fin makes it not closed');
+  const stripped = stripBadEdges(pinched);
+  assert.ok(stripped.dropped >= 3 && stripped.dropped < 20, `dropped ${stripped.dropped}`);
+  const r = repairParts([pinched]);
+  assert.ok(r.changed, r.log.join(' | '));
+  assert.equal(partsStats(r.list.map(x => x.part))[0].openEdges, 0, r.log.join(' | '));
+  assert.equal(r.list[0].part.color, '#AA0000');
 });

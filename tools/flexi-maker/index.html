@@ -46,6 +46,7 @@
           <select id="unit"><option value="1" selected>Millimetres</option><option value="10">Centimetres</option><option value="25.4">Inches</option></select>
         </label>
         <small class="muted">3MF files carry their own units, so leave this on millimetres for them. For a coloured OBJ, choose the .obj and its .mtl file together (hold Ctrl or Cmd), or drag both onto the preview.</small>
+        <label id="paintRow" hidden>Colours to keep (this model is painted point by point) <input type="number" id="paintColors" value="6" min="2" max="16" step="1"></label>
         <ul id="partList"></ul>
         <small class="muted" id="partHint" hidden>Every part keeps its colour in every segment. Untick a part to leave it out.</small>
       </fieldset>

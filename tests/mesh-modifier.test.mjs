@@ -499,3 +499,109 @@ test('hole: a hole along x really is along x (the pocket is visible only from th
   assert.ok(holeAt(14), 'the hole ends at x = 14 (20 - 6): its floor is there');
   assert.ok(!holeAt(10), 'nothing was cut at x = 10');
 });
+
+test('3MF from a slicer: colours come from the project palette and the extruders, paint strings split a mesh by filament', async () => {
+  // a tetrahedron-ish mesh of 4 triangles: 2 painted with filament 1 ("4"), one with filament 3 ("0C"), one unpainted (the object's extruder 2)
+  const model = `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>
+<object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="10" y="0" z="0"/><vertex x="0" y="10" z="0"/><vertex x="0" y="0" z="10"/></vertices>
+<triangles><triangle v1="0" v2="2" v3="1" paint_color="4"/><triangle v1="0" v2="1" v3="3" paint_color="4"/><triangle v1="1" v2="2" v3="3" paint_color="0C"/><triangle v1="2" v2="0" v3="3"/></triangles></mesh></object>
+<object id="2" type="model"><mesh><vertices><vertex x="20" y="0" z="0"/><vertex x="30" y="0" z="0"/><vertex x="20" y="10" z="0"/><vertex x="20" y="0" z="10"/></vertices>
+<triangles><triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/><triangle v1="1" v2="2" v3="3"/><triangle v1="2" v2="0" v3="3"/></triangles></mesh></object>
+</resources><build><item objectid="1"/><item objectid="2"/></build></model>`;
+  const settings = '<?xml version="1.0"?><config><object id="1"><metadata key="extruder" value="2"/></object><object id="2"><metadata key="extruder" value="4"/></object></config>';
+  const project = JSON.stringify({ filament_colour: ['#111111', '#22AA22', '#3333FF', '#FF8800'] });
+  const zip = zipStore([['[Content_Types].xml', '<Types/>'], ['3D/3dmodel.model', model], ['Metadata/model_settings.config', settings], ['Metadata/project_settings.config', project]]);
+  const parts = await parse3MF(zip);
+  const by = Object.fromEntries(parts.map(p => [p.slot + ':' + p.color, p.indices.length / 3]));
+  assert.equal(by['1:#111111'], 2, 'two triangles painted with filament 1');
+  assert.equal(by['3:#3333FF'], 1, 'one painted with filament 3, from the two-digit state "0C"');
+  assert.equal(by['2:#22AA22'], 1, 'the unpainted one takes the object\'s extruder 2');
+  assert.equal(by['4:#FF8800'], 4, 'an unpainted object takes its own extruder 4 and the palette colour');
+  assert.equal(new Set(parts.filter(p => p.slot !== 4).map(p => p.group)).size, 1, 'the colour patches of one mesh share a group');
+});
+
+// ---------- repair works at any scale ----------
+test('repair: the merge distance follows the model size, so a model one unit across is not collapsed', () => {
+  const small = { ...box(0, 0, 0, 0.98, 0.76, 0.56), name: 'unit-size' };                      // like an AI-generated model normalised to ~1 unit
+  const soup = soupOf(small), p = soupToPart(soup);                                              // the same box with every triangle on its own corners
+  const r = repairPart(p);
+  assert.equal(r.report.closed, true, describeRepair('unit-size', r.report));
+  assert.equal(r.report.removedTriangles, 0, 'nothing is thrown away');
+  near(partStats(r.part).volume, 0.98 * 0.76 * 0.56, 'volume kept');
+  assert.ok(r.report.tolerance < 1e-4, `merge distance ${r.report.tolerance} is tiny for a model this size`);
+  // two small features 0.005 apart on a unit-size model stay separate (a fixed 0.01 would have fused them)
+  const sphere = weldSoup(Array.from(new THREE.SphereGeometry(0.5, 40, 28).toNonIndexed().attributes.position.array), 'ball');
+  const hole = repairPart(dropTriangles(sphere, [300, 301, 302, 303]));
+  assert.equal(hole.report.closed, true, describeRepair('ball', hole.report));
+  assert.equal(hole.report.removedTriangles, 0);
+});
+
+test('repair: a large model is not rejected by its own size, and the tolerance can still be given explicitly', () => {
+  const big = soupToPart(soupOf(box(0, 0, 0, 900, 600, 400)));
+  const r = repairPart(big);
+  assert.equal(r.report.closed, true); near(partStats(r.part).volume, 900 * 600 * 400, 'volume');
+  assert.equal(repairPart(big, { tolerance: 0.5 }).report.tolerance, 0.5);
+});
+
+// ---------- surfaces that touch along an edge ----------
+const stitch = (...parts) => {
+  const n = parts.reduce((s, p) => s + p.positions.length, 0), positions = new Float32Array(n), indices = [];
+  let off = 0;
+  for (const p of parts) { positions.set(p.positions, off); for (const i of p.indices) indices.push(i + off / 3); off += p.positions.length; }
+  return { name: 'touching', color: null, positions, indices: Uint32Array.from(indices) };
+};
+
+test('repair: two solids that touch along one edge (four triangles on it) are pulled apart and become closed', () => {
+  const both = stitch(box(0, 0, 0, 1, 1, 1), box(1, 1, 0, 2, 2, 1));                // they share only the vertical edge x = 1, y = 1
+  assert.ok(partStats(both).openEdges > 0, 'the shared edge has four triangles');
+  const r = repairPart(both);
+  assert.equal(r.report.closed, true, describeRepair('touching', r.report));
+  assert.equal(r.report.separatedPoints, 2, 'one new copy at each end of the edge');
+  within(partStats(r.part).volume, 2, 0.01, 'volume: the two cubes, minus a sliver where the nudge pulled the corners in');
+  assert.match(describeRepair('touching', r.report), /pulled apart 2 points/);
+});
+
+test('repair: a model that is already fine is not touched by the pinch step', () => {
+  const r = repairPart(box(0, 0, 0, 10, 10, 10));
+  assert.equal(r.report.separatedPoints, 0);
+  assert.equal(r.report.closed, true);
+  // two cones meeting only at a point have no shared edge: their vertex is left alone
+  const cone = (z0, up) => { const a = [0, 0, 0], ring = Array.from({ length: 8 }, (_, k) => [Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4), z0]);
+    const pos = [...a.map((v, i) => (i === 2 ? 0 : v)), ...ring.flat()], idx = [];
+    for (let k = 0; k < 8; k++) { const p = 1 + k, q = 1 + (k + 1) % 8; idx.push(...(up ? [0, p, q] : [0, q, p])); }
+    const c = []; for (let k = 1; k < 7; k++) c.push(...(up ? [1, 1 + k + 1, 1 + k] : [1, 1 + k, 1 + k + 1]));
+    return { name: 'cone', color: null, positions: Float32Array.from(pos), indices: Uint32Array.from([...idx, ...c]) }; };
+  const tips = repairPart(stitch(cone(-1, true), cone(1, false)));
+  assert.equal(tips.report.separatedPoints, 0, 'a point-to-point touch has no bad edge, so nothing is split');
+});
+
+// ---------- compressed 3MF ----------
+const { zipDeflate } = await import('../shared/js/zip.js');
+const { export3MFCompressed } = await import('../shared/js/export.js');
+const { execFileSync } = await import('node:child_process');
+const fsMod = await import('node:fs'), osMod = await import('node:os'), pathMod = await import('node:path');
+
+test('zipDeflate: big entries are deflated, small ones stored, and the round trip is exact', async () => {
+  const big = 'vertex 1.2345 6.789 0.5\n'.repeat(5000), tinyBytes = Uint8Array.from([1, 2, 3]);
+  const zip = await zipDeflate([['big.txt', big], ['tiny.bin', tinyBytes], ['é/unicode.txt', 'ünï']]);
+  assert.ok(zip.length < big.length / 5, `deflated: ${zip.length} bytes for ${big.length}`);
+  const r = unzip(zip);
+  assert.equal(new TextDecoder().decode(await r.read('big.txt')), big);
+  assert.deepEqual([...await r.read('tiny.bin')], [1, 2, 3]);
+  assert.equal(new TextDecoder().decode(await r.read('é/unicode.txt')), 'ünï');
+});
+
+test('3MF: the compressed export is much smaller, reads back identically, and the system unzip accepts it', async () => {
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(10, 96, 64).toNonIndexed()); sphere.name = 'ball';
+  const { group, parts: meta } = buildGroup([weldSoup(Array.from(sphere.geometry.attributes.position.array), 'Ball')]);
+  const plain = export3MF(group, { title: 'ball', parts: meta }), packed = await export3MFCompressed(group, { title: 'ball', parts: meta });
+  assert.ok(packed.size < plain.size / 3, `${packed.size} vs ${plain.size} bytes`);
+  const a = await parse3MF(await plain.arrayBuffer()), b = await parse3MF(await packed.arrayBuffer());
+  assert.equal(a.length, b.length);
+  assert.deepEqual(Array.from(b[0].positions), Array.from(a[0].positions)); assert.deepEqual(Array.from(b[0].indices), Array.from(a[0].indices));
+  const file = pathMod.join(osMod.tmpdir(), `packed-${process.pid}.3mf`);
+  fsMod.writeFileSync(file, Buffer.from(await packed.arrayBuffer()));
+  try { assert.match(execFileSync('unzip', ['-t', file], { encoding: 'utf8' }), /No errors detected/); }
+  catch (e) { if (e.code !== 'ENOENT') throw e; }                              // no system unzip here: the round trip above already proved it
+  finally { fsMod.unlinkSync(file); }
+});

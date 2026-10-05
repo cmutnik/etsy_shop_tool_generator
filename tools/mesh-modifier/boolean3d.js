@@ -19,7 +19,7 @@ const SEGMENTS = 64;
 const notClosed = part => new Error(`"${part.name}" is not a closed (watertight) solid, so it cannot be cut. Use "Repair open edges" first, or untick that part.`);
 
 export function toManifold(w, part) {
-  const mesh = new w.Mesh({ numProp: 3, vertProperties: part.positions, triVerts: part.indices });
+  const mesh = new w.Mesh({ numProp: 3, vertProperties: part.positions, triVerts: part.indices, ...(part.labels ? { faceID: part.labels } : {}) });   // `labels` (a number per triangle) survive the cuts, to tell colour patches apart
   mesh.merge();
   let m;
   try { m = w.Manifold.ofMesh(mesh); } catch { throw notClosed(part); }

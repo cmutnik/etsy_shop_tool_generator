@@ -6,6 +6,7 @@
 // and colour, placed by the build item's transform. A mesh whose triangles carry different colours is split into one part
 // per colour, so nothing is merged into one lump. STL has no colour or parts and becomes a single part.
 import { unzip } from './zip.js';
+import { quantizeColors } from './palette.js';
 
 const UNIT_MM = { micron: 0.001, millimeter: 1, centimeter: 10, meter: 1000, inch: 25.4, foot: 304.8 };
 export const MAX_TRIANGLES = 3_000_000;
@@ -261,17 +262,6 @@ function compactVertices(part) {
 /** Pick the reader from the file name. Returns parts. */
 // ---------- OBJ ----------
 
-/** True when every edge of the part is shared by exactly two triangles. */
-function isClosed(part) {
-  const edges = new Map(), n = part.positions.length / 3 + 1, idx = part.indices;
-  for (let t = 0; t < idx.length; t += 3) for (let e = 0; e < 3; e++) {
-    const a = idx[t + e], b = idx[t + (e + 1) % 3], key = a < b ? a * n + b : b * n + a;
-    edges.set(key, (edges.get(key) || 0) + 1);
-  }
-  for (const c of edges.values()) if (c !== 2) return false;
-  return true;
-}
-
 const hex2 = v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0').toUpperCase();
 const rgbHex = (r, g, b) => '#' + hex2(r) + hex2(g) + hex2(b);
 
@@ -292,10 +282,12 @@ export function parseMTL(text) {
 const MAX_OBJ_GROUPS = 32;
 /**
  * Wavefront OBJ -> parts. One part per material, coloured from the .mtl text `mtl`. With no materials: one per group / object (up to 32),
- * else one per vertex colour (`v x y z r g b`), else a single part. Polygons are split into triangles; negative indices work.
- * The returned array has a `notes` list for the user: a missing .mtl, textures, a Y-up file.
+ * else, for vertex colours (`v x y z r g b`, as AI-generated and scanned models have), the shades are reduced to `colors` colours and the
+ * model is split by them (the pieces share a `group`, so they can be put back together), else a single part. Polygons are split into
+ * triangles; negative indices work. The returned array has a `notes` list for the user (a missing .mtl, textures, a Y-up file), and
+ * `painted: { colors }` when the colour was painted on the surface.
  */
-export function parseOBJ(buffer, { mtl = null, name = 'Model' } = {}) {
+export function parseOBJ(buffer, { mtl = null, name = 'Model', colors = 6 } = {}) {
   const text = new TextDecoder().decode(buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer));
   const pos = [], vcol = [], tris = [], mats = [], grps = [];                  // per triangle: corner ids (3 each), material, group
   let material = '', group = '', sawMaterial = false, hasColors = false;
@@ -327,15 +319,16 @@ export function parseOBJ(buffer, { mtl = null, name = 'Model' } = {}) {
   const cornerColor = id => (Number.isNaN(vcol[id * 3]) ? [1, 1, 1] : [vcol[id * 3] / scale, vcol[id * 3 + 1] / scale, vcol[id * 3 + 2] / scale]);
   const distinctGroups = new Set(grps).size;
   const mode = sawMaterial ? 'material' : distinctGroups > 1 && distinctGroups <= MAX_OBJ_GROUPS ? 'group' : hasColors ? 'color' : 'none';
-  const labelOf = t => {
-    if (mode === 'material') return mats[t];
-    if (mode === 'group') return grps[t];
-    if (mode === 'color') {                                                     // average of the corners, rounded to 16 levels per channel so shading does not make hundreds of parts
-      const c = [0, 1, 2].map(k => cornerColor(tris[t * 3 + k])), q = i => Math.round((c[0][i] + c[1][i] + c[2][i]) / 3 * 15) / 15;
-      return rgbHex(q(0), q(1), q(2));
+  let painted = null;                                                           // { labels, palette } when colour is painted on the surface
+  if (mode === 'color') {
+    const rgb = new Float32Array(mats.length * 3);
+    for (let t = 0; t < mats.length; t++) {                                     // each triangle's colour: the average of its corners
+      const c = [0, 1, 2].map(k => cornerColor(tris[t * 3 + k]));
+      for (let ch = 0; ch < 3; ch++) rgb[t * 3 + ch] = (c[0][ch] + c[1][ch] + c[2][ch]) / 3;
     }
-    return '';
-  };
+    painted = quantizeColors(rgb, colors);
+  }
+  const labelOf = t => (mode === 'material' ? mats[t] : mode === 'group' ? grps[t] : mode === 'color' ? painted.palette[painted.labels[t]] : '');
   const groups = new Map();
   for (let t = 0; t < mats.length; t++) {
     const label = labelOf(t);
@@ -348,17 +341,12 @@ export function parseOBJ(buffer, { mtl = null, name = 'Model' } = {}) {
     const part = weldSoup(Float32Array.from(soup), mode === 'color' ? `Colour ${label}` : label || name);
     if (!part.indices.length) continue;
     part.color = mode === 'color' ? label : mode === 'material' ? materials.get(label)?.color || null : null;
+    if (mode === 'color') part.group = 'obj-colours';                           // the colours are patches of one surface
     parts.push(part);
   }
-  if (mode === 'color' && !(parts.length <= 16 && parts.every(isClosed))) {
-    // colour painted over one surface (a scan, an AI-generated model): the colour patches are open skins, not solids, so keep it whole
-    const all = weldSoup(Float32Array.from([...groups.values()].flatMap(g => g)), name);
-    let r = 0, g = 0, b = 0;
-    for (let i = 0; i < vcol.length; i += 3) if (!Number.isNaN(vcol[i])) { r += vcol[i]; g += vcol[i + 1]; b += vcol[i + 2]; }
-    const n = vcol.filter(v => !Number.isNaN(v)).length / 3 || 1;
-    all.color = rgbHex(r / n / scale, g / n / scale, b / n / scale);
-    parts.length = 0; parts.push(all);
-    notes.push(`This OBJ is coloured point by point (${groups.size.toLocaleString()} shades), like a painted texture. Printers need whole solid parts, so it is loaded as one part in its average colour; change the colour in the list. Print each colour with a multi-colour printer's own painting tools instead.`);
+  if (mode === 'color') {
+    parts.painted = { colors: parts.length };
+    notes.push(`This OBJ is coloured point by point, like a painted texture. Its shades are reduced to ${parts.length} colour${parts.length === 1 ? '' : 's'}, each its own part; together the parts make the whole model. Change "Colours to keep" to use more or fewer.`);
   }
   if (!parts.length) throw new Error('This OBJ has no usable triangles.');
   if (mode === 'material') {
@@ -374,7 +362,7 @@ export function parseOBJ(buffer, { mtl = null, name = 'Model' } = {}) {
 }
 
 /** Choose the model file from a drop or picker (an .obj may come with its .mtl) and read it. Returns { file, parts, notes }. */
-export async function readModelFiles(files) {
+export async function readModelFiles(files, { colors = 6 } = {}) {
   const list = [...files], main = list.find(f => /\.(stl|3mf|obj)$/i.test(f.name));
   if (!main) throw new Error('Choose an .stl, .3mf or .obj file.');
   let mtl = null;
@@ -387,14 +375,14 @@ export async function readModelFiles(files) {
       mtl = await pick.text();
     }
   }
-  const parts = await parseMesh(main.name, await main.arrayBuffer(), { mtl });
-  return { file: main, parts, notes: parts.notes || [] };
+  const parts = await parseMesh(main.name, await main.arrayBuffer(), { mtl, colors });
+  return { file: main, parts, notes: parts.notes || [], painted: parts.painted || null };
 }
 
-export async function parseMesh(filename, buffer, { mtl = null } = {}) {
+export async function parseMesh(filename, buffer, { mtl = null, colors = 6 } = {}) {
   const lower = filename.toLowerCase(), name = filename.replace(/\.[^.]+$/, '');
   if (lower.endsWith('.stl')) return [parseSTL(buffer, name)];
   if (lower.endsWith('.3mf')) return parse3MF(buffer);
-  if (lower.endsWith('.obj')) return parseOBJ(buffer, { mtl, name });
+  if (lower.endsWith('.obj')) return parseOBJ(buffer, { mtl, name, colors });
   throw new Error('Choose an .stl, .3mf or .obj file.');
 }

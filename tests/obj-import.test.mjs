@@ -60,23 +60,28 @@ test('OBJ with vertex colours: one part per colour', () => {
   for (const p of parts) assert.equal(partStats(p).openEdges, 0);
 });
 
-test('OBJ painted point by point loads as one solid in its average colour instead of failing', () => {
-  // a closed cube whose vertex colours run from red (bottom) to blue (top), plus a smooth gradient of 200 shades on a fan of triangles
+test('OBJ painted point by point keeps a palette of the asked-for number of colours', () => {
+  // a cube whose vertex colours run from red (bottom) to blue (top)
   const verts = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0], [0, 0, 10], [10, 0, 10], [10, 10, 10], [0, 10, 10]];
   const lines = verts.map(([x, y, z]) => `v ${x} ${y} ${z} ${z ? '0 0 1' : '1 0 0'}`);
   for (const f of [[1, 4, 3, 2], [5, 6, 7, 8], [1, 2, 6, 5], [2, 3, 7, 6], [3, 4, 8, 7], [4, 1, 5, 8]]) lines.push(`f ${f.join(' ')}`);
-  const cube = parseOBJ(enc(lines.join('\n')));
-  assert.equal(cube.length, 1, 'colour patches of one surface are not parts');
-  assert.equal(partStats(cube[0]).openEdges, 0);
-  assert.equal(cube[0].color, '#800080', 'the average of red and blue');
-  assert.ok(cube.notes.some(n => /point by point/.test(n)));
+  const cube = parseOBJ(enc(lines.join('\n')), { colors: 3 });
+  assert.ok(cube.length >= 2 && cube.length <= 3, `${cube.length} colour parts`);
+  assert.ok(cube.every(p => /^#[0-9A-F]{6}$/.test(p.color) && p.group === 'obj-colours'), 'all coloured, all one group');
+  assert.equal(cube.reduce((n, p) => n + partStats(p).triangles, 0), 12, 'no triangle lost');
+  assert.deepEqual(cube.painted, { colors: cube.length });
+  assert.ok(cube.notes.some(n => /Colours to keep/.test(n)));
 
+  // more than a thousand shades: reduced to the number asked for, not rejected
   const many = [];
-  for (let i = 0; i < 1200; i++) many.push(`v ${i % 40} ${Math.floor(i / 40)} ${(i * 7) % 5} ${(i % 200) / 200} 0.5 0.25`);
+  for (let i = 0; i < 1200; i++) many.push(`v ${i % 40} ${Math.floor(i / 40)} ${(i * 7) % 5} ${(i % 200) / 200} ${(i % 7) / 7} ${(i % 3) / 3}`);
   for (let i = 0; i < 1100; i++) many.push(`f ${i + 1} ${i + 2} ${i + 3}`);
-  const heavy = parseOBJ(enc(many.join('\n')));
-  assert.equal(heavy.length, 1, 'more than a thousand shades no longer throws');
-  assert.match(heavy[0].color, /^#[0-9A-F]{6}$/);
+  for (const k of [2, 5, 8]) {
+    const heavy = parseOBJ(enc(many.join('\n')), { colors: k });
+    assert.equal(heavy.length, k);
+    assert.equal(new Set(heavy.map(p => p.color)).size, k, 'distinct colours');
+    assert.equal(heavy.reduce((n, p) => n + partStats(p).triangles, 0), 1100);
+  }
 });
 
 test('OBJ groups without materials become parts; too many groups stay one part', () => {

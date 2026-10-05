@@ -6,6 +6,7 @@
 // notch (flat gap plus a cone) is removed so the two sides can tilt. The ball is added to the lower segment, in the colour of whichever
 // part it grows out of; the socket is carved out of every part above it. Each original part (so each colour) stays its own part in every segment.
 import { loadManifold, toManifold, fromManifold } from '../mesh-modifier/boolean3d.js';
+import { mergeGroups } from '../mesh-modifier/geometry.js';
 import { cutPositions, poleOfInaccessibility, ballDims, hookDims } from './joints.js';
 
 const SEGMENTS = 48;
@@ -37,6 +38,53 @@ function reachOf(parts, rings, x, y, z0, z1) {
 }
 
 /**
+ * Split a result into one mesh per label (the colour patch each triangle came from). Triangles the cuts created (cut faces, loops, balls) carry
+ * no label of their own: each takes the label of the nearest labelled triangle, so a cut face is divided where the paint is and a joint is
+ * coloured like the surface it grows out of.
+ */
+export function splitByLabel(m, origin) {
+  const mesh = m.getMesh(), stride = mesh.numProp, tri = mesh.triVerts, vp = mesh.vertProperties, count = tri.length / 3, label = new Int32Array(count).fill(-1);
+  if (mesh.faceID) for (let r = 0; r < mesh.runOriginalID.length; r++) {
+    if (mesh.runOriginalID[r] !== origin) continue;
+    for (let t = mesh.runIndex[r] / 3; t < mesh.runIndex[r + 1] / 3; t++) label[t] = mesh.faceID[t];
+  }
+  const unlabelled = [];
+  for (let t = 0; t < count; t++) if (label[t] < 0) unlabelled.push(t);
+  if (unlabelled.length && unlabelled.length < count) {
+    // let the labels spread over shared edges from the painted triangles into the new ones: nearest by hops across the surface
+    const V = vp.length / stride + 1, edgeKey = (a, b) => (a < b ? a * V + b : b * V + a), edges = new Map();
+    for (const t of unlabelled) for (let e = 0; e < 3; e++) { const k = edgeKey(tri[t * 3 + e], tri[t * 3 + (e + 1) % 3]); (edges.get(k) || edges.set(k, []).get(k)).push(t); }
+    const queue = [];
+    for (let t = 0; t < count; t++) {                                           // seeds: new triangles that touch a painted one
+      if (label[t] < 0) continue;
+      for (let e = 0; e < 3; e++) for (const u of edges.get(edgeKey(tri[t * 3 + e], tri[t * 3 + (e + 1) % 3])) || []) if (label[u] < 0) { label[u] = label[t]; queue.push(u); }
+    }
+    for (let head = 0; head < queue.length; head++) {
+      const t = queue[head];
+      for (let e = 0; e < 3; e++) for (const u of edges.get(edgeKey(tri[t * 3 + e], tri[t * 3 + (e + 1) % 3])) || []) if (label[u] < 0) { label[u] = label[t]; queue.push(u); }
+    }
+    for (const t of unlabelled) if (label[t] < 0) label[t] = 0;                // a piece cut off from every painted triangle
+  } else if (unlabelled.length) label.fill(0);
+  const byLabel = new Map();
+  for (let t = 0; t < count; t++) {
+    if (!byLabel.has(label[t])) byLabel.set(label[t], []);
+    byLabel.get(label[t]).push(t);
+  }
+  return [...byLabel].map(([l, list]) => {
+    const ids = new Map(), pos = [], indices = new Uint32Array(list.length * 3);
+    list.forEach((t, k) => {
+      for (let c = 0; c < 3; c++) {
+        const v = tri[t * 3 + c];
+        let id = ids.get(v);
+        if (id === undefined) { id = ids.size; ids.set(v, id); pos.push(vp[v * stride], vp[v * stride + 1], vp[v * stride + 2]); }
+        indices[k * 3 + c] = id;
+      }
+    });
+    return { label: l, positions: Float32Array.from(pos), indices };
+  });
+}
+
+/**
  * opts: { axis: 'x' | 'y' | 'z', count (segments), positions (optional list of cuts, mm along the axis),
  *         joint: 'hook' (a closed loop on each segment, the two linked like a chain) | 'ball' (ball and socket),
  *         ball (mm radius, 0 = auto), bar (mm, the loops' bar thickness, 0 = auto), bend (degrees each joint should reach),
@@ -48,8 +96,10 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
   if (!(clearance >= 0.1)) throw new Error('The joint clearance must be at least 0.1 mm, or the pieces fuse together.');
   const w = await loadManifold(), made = [], keep = m => { made.push(m); return m; }, warnings = [];
   try {
-    const src = parts.map(p => permute(p, axis));
+    const items = mergeGroups(parts);                                           // colour patches of one surface are cut together, then split by colour again
+    const src = items.map(p => permute(p, axis));
     const solids = src.map(p => keep(toManifold(w, p)));
+    const origin = solids.map(m => m.getMesh().runOriginalID[0]);               // tells which triangles of a result came from the model itself (a fresh solid is one run)
     const whole = keep(w.Manifold.union(solids));
     const { min, max } = whole.boundingBox(), lo = min[2], hi = max[2];
     const cuts = cutPositions(lo, hi, count, positions);
@@ -168,11 +218,15 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
 
     // 7. name the pieces by segment and hand them back in the original orientation
     pieces.sort((a, b) => a.seg - b.seg || a.pi - b.pi);
-    const many = parts.length > 1;
-    const out = pieces.map(p => {
-      const like = parts[p.pi], name = many ? `Segment ${p.seg + 1} - ${like.name}` : `Segment ${p.seg + 1}`;
-      return permute({ ...fromManifold(p.m, like), name, color: like.color, slot: like.slot, seg: p.seg }, axis, true);
-    });
+    const many = parts.length > 1, out = [];
+    for (const p of pieces) {
+      const item = items[p.pi], name = member => (many ? `Segment ${p.seg + 1} - ${member.name}` : `Segment ${p.seg + 1}`);
+      if (!item.members) { out.push(permute({ ...fromManifold(p.m, item), name: name(item), color: item.color, slot: item.slot, seg: p.seg }, axis, true)); continue; }
+      for (const sub of splitByLabel(p.m, origin[p.pi])) {                      // a painted model: one part per colour again
+        const member = item.members[sub.label];
+        out.push(permute({ name: name(member), color: member.color, slot: member.slot, seg: p.seg, positions: sub.positions, indices: sub.indices, ...(member.group ? { group: member.group } : {}) }, axis, true));
+      }
+    }
     return { parts: out, cuts, joints: joints.map(j => ({ k: j.k, at: j.c, half: j.half, pivot: hook ? j.c : j.c - j.half + j.a, x: j.x, y: j.y, radius: hook ? j.d : j.R })), bend: allowed, warnings };
   } finally { made.forEach(m => m.delete()); }
 }

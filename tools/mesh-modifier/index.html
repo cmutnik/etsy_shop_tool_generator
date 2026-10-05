@@ -49,6 +49,7 @@
           <select id="unit"><option value="1" selected>Millimetres</option><option value="10">Centimetres</option><option value="25.4">Inches</option></select>
         </label>
         <small class="muted">3MF files carry their own units, so leave this on millimetres for them. For an STL or OBJ, pick what the model was designed in. For a coloured OBJ, choose the .obj and its .mtl file together (hold Ctrl or Cmd). You can also drag a file onto the preview.</small>
+        <label id="paintRow" hidden>Colours to keep (this model is painted point by point) <input type="number" id="paintColors" value="6" min="2" max="16" step="1"></label>
         <ul id="partList"></ul>
         <small class="muted" id="partHint" hidden>Untick a part to leave it out, or change its colour. The last box is its filament slot for multi-colour printing: leave it on auto and parts of the same colour share a slot, or type a number to choose. Slots read from a 3MF are kept. Colours and slots go into the 3MF.</small>
       </fieldset>
