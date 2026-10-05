@@ -62,7 +62,7 @@ const RELS = '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http
  * object made of one mesh object per part, plus Metadata/model_settings.config assigning each part to a
  * filament slot. These slicers ignore per-triangle colours, so standard basematerials/colorgroup tags are
  * written only as hints for other viewers. The actual colour that prints is whatever filament is loaded in
- * that slot. (Same layout as invite2svg's mesh_to_3mf_bytes, which is verified in Orca.)
+ * that slot. (This layout is verified in Orca.)
  */
 export function export3MF(object, { title = 'model', parts = null } = {}) {
   const { verts, tris, triMat, triName, palette } = collectMesh(object);

@@ -41,7 +41,6 @@ tools/
   wedding-invite-3d/        planned - README only, see docs/ROADMAP.md
 tests/                      node --test; geometry, import, export (npm test)
 docs/                       this file + roadmap
-invite2svg/                 legacy Python/Streamlit app, being ported (see roadmap); untouched
 ```
 
 **One exception to `+esm`:** `manifold-3d` is imported from its plain `manifold.js` file (`https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/manifold.js`), not `+esm`, because it finds `manifold.wasm` next to itself through `import.meta.url`, which a bundled copy would lose. It has no bare imports. It is loaded with a dynamic `import()` only when a cut is used, and `tests/page-deps.test.mjs` follows dynamic imports.

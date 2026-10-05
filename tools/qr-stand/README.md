@@ -1,7 +1,7 @@
 <!-- Copyright (c) 2025 cmutnik -->
 # QR Code Stand
 
-Live. Port of `invite2svg/pages/2_*QR_Code_Stand.py` + `qr_stand_utils.py`.
+Live.
 
 Two printable parts, both modelled flat on the bed:
 

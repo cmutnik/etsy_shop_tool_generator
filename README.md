@@ -110,7 +110,6 @@ Enable GitHub Pages on the repo root: Settings > Pages > Deploy from branch `mai
 | `shared/js/` | Code shared by tools: 2D geometry, text layout, SVG and image import, raster checks, QR plates, 3D viewer, STL/3MF export |
 | `tests/` | `node --test` suites |
 | `docs/` | [Architecture](docs/ARCHITECTURE.md) and [roadmap](docs/ROADMAP.md) |
-| `invite2svg/` | Existing Python/Streamlit app (QR stand, keychain, wedding invite). Being ported to JavaScript here, then removed. See the [port plan](docs/ROADMAP.md#porting-the-qr-tools-from-invite2svg) |
 
 ## Contributing a new tool
 
