@@ -95,7 +95,7 @@ function invalidate() { result = null; pose = null; $('poseRow').hidden = true; 
 function draw() {
   if (!source) return;
   const used = usedParts();
-  $('barRow').hidden = $('joint').value === 'ball'; $('ballRow').hidden = $('gapRow').hidden = $('joint').value !== 'ball';
+  $('barRow').hidden = $('joint').value === 'ball'; $('ballRow').hidden = $('joint').value !== 'ball';
   $('make').disabled = busy || !used.length;
   if (!used.length) { showError('Keep at least one part ticked.'); return; }
   showError('');
@@ -145,7 +145,7 @@ $('make').addEventListener('click', async () => {
     const axis = $('axis').value, k = AXES.indexOf(axis), lo = xf.min[k];
     const flexi = await makeFlexi(xf.parts, {
       axis, count: num('count'), positions: customList().length ? customList().map(v => lo + v) : null,
-      joint: $('joint').value, ball: num('ball') || 0, bar: num('bar') || 0, bend: num('bend') || 0, clearance: num('clearance'), gap: num('gap'),
+      joint: $('joint').value, ball: num('ball') || 0, bar: num('bar') || 0, bend: num('bend') || 0, clearance: num('clearance'),
     });
     let parts = flexi.parts;
     const turn = $('onSide').checked && axis === 'z';

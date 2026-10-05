@@ -83,10 +83,10 @@
           <label id="barRow">Loop bar thickness (mm, 0 = automatic) <input type="number" id="bar" value="0" min="0" max="10" step="0.5"></label>
           <label id="ballRow" hidden>Ball size (mm, 0 = automatic) <input type="number" id="ball" value="0" min="0" max="20" step="0.5"></label>
           <label>Joint clearance (mm) <input type="number" id="clearance" value="0.4" min="0.1" max="1.5" step="0.05"></label>
-          <label id="gapRow" hidden>Gap between segments (mm) <input type="number" id="gap" value="0.6" min="0.2" max="3" step="0.1"></label>
+          
         </div>
         <label class="inline"><input type="checkbox" id="onSide" checked> Lay it on its side for printing (recommended)</label>
-        <small class="muted">Each cut becomes a joint that prints already assembled. <b>Hook and loop</b> gives each segment a closed loop and links the two at right angles, like a chain, so every pair can swing and twist; the segments end up a link-length apart. <b>Ball and socket</b> hides a ball inside the segment. Clearance is the space each moving part needs: 0.3-0.4 mm suits most 0.4 mm nozzles, bigger if joints fuse. Laying the model on its side prints the joints with vertical gaps, which prints cleanly; standing it up makes each joint a flat overhang.</small>
+        <small class="muted">Each cut becomes a joint that prints already assembled. <b>Hook and loop</b> gives each segment a closed loop and links the two at right angles, like a chain, so every pair can swing and twist; the segments end up a link-length apart. <b>Ball and socket</b> puts a ball on a short neck on one segment and a cup over it on the next, like an articulated figure; the cup's mouth is narrower than the ball, so it cannot pull out. Clearance is the space each moving part needs: 0.3-0.4 mm suits most 0.4 mm nozzles, bigger if joints fuse. Laying the model on its side prints the joints with vertical gaps, which prints cleanly; standing it up makes each joint a flat overhang.</small>
         <button id="make" class="primary" type="button" disabled>Make it flexi</button>
       </fieldset>
 
@@ -113,7 +113,7 @@
         <ul>
           <li><b>Everything stays in your browser.</b> The file is read on this page and never uploaded.</li>
           <li><b>Colours are kept.</b> Each part of a 3MF keeps its colour and filament slot in every segment, and a joint takes the colour of the part it grows out of. Download the 3MF to keep them; an STL has no colour and merges everything into one shell.</li>
-          <li><b>How it works:</b> the model is cut across at the planes shown and a V-shaped notch is removed around each cut so the pieces can tilt. With hook and loop, a closed loop stands on the lower segment, another hangs from the upper one at right angles, and each passes through the other's opening. With ball and socket, a ball on a short neck (lower segment) is trapped in a socket (upper segment). Where a cut crosses several separate pieces (for example two legs) each gets its own joint.</li>
+          <li><b>How it works:</b> the model is cut across at the planes shown and a V-shaped notch is removed around each cut so the pieces can tilt. With hook and loop, a closed loop stands on the lower segment, another hangs from the upper one at right angles, and each passes through the other's opening. With ball and socket, a ball on a short neck (lower segment) is trapped in a cup (upper segment). Where a cut crosses several separate pieces (for example two legs) each gets its own joint.</li>
           <li><b>Bend:</b> the bend you ask for is limited if the pieces are too short; the page says so. Fewer segments bend further. Parts that are too thin for a joint stay solid.</li>
           <li><b>Printing:</b> print on the side the page shows, no supports inside the joints, a layer height of 0.2 mm or less, and remove the model from the bed gently. If the joints fuse, increase the clearance; if they feel loose, reduce it. Break each joint free by bending it once or twice.</li>
           <li><b>The model must be a closed solid.</b> Use the STL / 3MF Modifier's Repair first if the page says a part is not watertight.</li>

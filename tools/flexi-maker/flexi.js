@@ -6,11 +6,11 @@
 // notch (flat gap plus a cone) is removed so the two sides can tilt. The ball is added to the lower segment, in the colour of whichever
 // part it grows out of; the socket is carved out of every part above it. Each original part (so each colour) stays its own part in every segment.
 import { loadManifold, toManifold, fromManifold } from '../mesh-modifier/boolean3d.js';
-import { cutPositions, poleOfInaccessibility, jointDims, hookDims } from './joints.js';
+import { cutPositions, poleOfInaccessibility, ballDims, hookDims } from './joints.js';
 
 const SEGMENTS = 48;
-const WALL = 1.2;           // material left around a socket
-const MIN_BALL = 2;         // smaller than this and a joint is not worth printing
+const CUP_WALL = 1.4;       // the cup's wall, as in ballDims()
+const MIN_BALL = 2.5;       // smaller than this and a joint is not worth printing
 const MIN_THICKNESS = 3;    // what a notch may not eat into at a segment's rim
 
 // Put the cut axis on z (cyclic, so triangle winding is kept) and back again.
@@ -40,13 +40,12 @@ function reachOf(parts, rings, x, y, z0, z1) {
  * opts: { axis: 'x' | 'y' | 'z', count (segments), positions (optional list of cuts, mm along the axis),
  *         joint: 'hook' (a closed loop on each segment, the two linked like a chain) | 'ball' (ball and socket),
  *         ball (mm radius, 0 = auto), bar (mm, the loops' bar thickness, 0 = auto), bend (degrees each joint should reach),
- *         clearance, gap (ball joints only: the flat gap; a hook joint's gap follows from its loops) }
- * Returns { parts, cuts: [mm along the axis], joints: [{ at (the cut, mm along the axis), pivot (the ball's centre, same axis, model coordinates), x, y, radius }], bend (degrees actually allowed), warnings }.
+ *         clearance }                                                          (the gap between segments follows from the joint's size)
+ * Returns { parts, cuts: [mm along the axis], joints: [{ half (half the distance between the two faces), at (the cut, mm along the axis), pivot (the ball's centre, same axis, model coordinates), x, y, radius }], bend (degrees actually allowed), warnings }.
  */
-export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null, joint = 'hook', ball = 0, bar = 0, bend = 20, clearance = 0.4, gap = 0.6 } = {}) {
+export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null, joint = 'hook', ball = 0, bar = 0, bend = 20, clearance = 0.4 } = {}) {
   if (!FORWARD[axis]) throw new Error(`Unknown axis: ${axis}`);
   if (!(clearance >= 0.1)) throw new Error('The joint clearance must be at least 0.1 mm, or the pieces fuse together.');
-  if (!(gap >= 0.2)) throw new Error('The gap between segments must be at least 0.2 mm.');
   const w = await loadManifold(), made = [], keep = m => { made.push(m); return m; }, warnings = [];
   try {
     const src = parts.map(p => permute(p, axis));
@@ -73,9 +72,14 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
     // 2. which sites can hold a joint, and how far apart the two faces of each cut must be
     const hook = joint !== 'ball', viable = [];
     for (const s of sites) {
-      if (!hook) { viable.push({ ...s, half: gap / 2 }); continue; }
-      const dims = hookDims(s.room, Math.min(thick(s.k), thick(s.k + 1)), clearance, bar);
-      if (dims) viable.push({ ...s, ...dims }); else skipped.push({ k: s.k, why: s.room < 6 ? 'too thin' : 'the segments are too short', comp: s.comp });
+      const tMin = Math.min(thick(s.k), thick(s.k + 1));
+      let dims = null;
+      if (hook) dims = hookDims(s.room, tMin, clearance, bar);
+      else {                                                                    // the biggest ball whose cup fits the room and whose segments are long enough
+        const fit = R => R >= MIN_BALL && R + clearance + CUP_WALL + 0.5 <= s.room && (ballDims(R, clearance)?.G ?? Infinity) + 8 <= tMin;
+        for (let R = ball > 0 ? ball : Math.min(Math.max(0.6 * s.room, 2.5), 12); R >= MIN_BALL && !dims; R *= 0.93) if (fit(R)) dims = ballDims(R, clearance);
+      }
+      if (dims) viable.push({ ...s, ...dims }); else skipped.push({ k: s.k, why: s.room < 6 ? 'too thin' : 'the segments are too short', comp: s.comp, });
     }
 
     // 3. how far the notches may cut in before a segment gets too thin at its rim
@@ -89,20 +93,10 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
       if (rLow + rHigh > 0) t = Math.min(t, Math.max(free, 0) / (rLow + rHigh));
     }
     let allowed = (Math.atan(t) * 360) / Math.PI;
-    if (hook && viable.length) allowed = Math.min(allowed, ...viable.map(s => s.tilt));                  // the loops meet the sides of each other's openings
-    if (tReq > 0 && allowed < bend - 1e-6) warnings.push(`${hook && allowed < (Math.atan(t) * 360) / Math.PI - 1e-6 ? 'The loops' : 'The pieces are too short and thin, so the joints'} will bend about ${Math.round(allowed)} degrees, not ${Math.round(bend)}. ${hook ? 'Thicker bars and fewer segments allow more.' : 'Use fewer segments for more bend.'}`);
+    if (viable.length) allowed = Math.min(allowed, ...viable.map(s => s.tilt));                          // where the loops (or the neck and the cup) meet each other
+    if (tReq > 0 && allowed < bend - 1e-6) warnings.push(`${allowed < (Math.atan(t) * 360) / Math.PI - 1e-6 ? (hook ? 'The loops' : 'The ball joints') : 'The pieces are too short and thin, so the joints'} will bend about ${Math.round(allowed)} degrees, not ${Math.round(bend)}. ${hook ? 'Thicker bars and fewer segments allow more.' : 'Bigger balls and fewer segments allow more.'}`);
 
-    // 4. size each ball to the room it has (a hook joint's sizes are already known)
-    const joints = [];
-    for (const s of viable) {
-      if (hook) { joints.push(s); continue; }
-      const tLow = thick(s.k), tHigh = thick(s.k + 1);
-      let R = Math.min(ball > 0 ? ball : Math.min(Math.max(0.5 * s.room, 2.5), 10), s.room - clearance - WALL, (Math.min(tLow, tHigh) - 4.1 - clearance) / 1.8);
-      let dims = null;
-      while (R >= MIN_BALL && !(dims = jointDims(R, clearance, t))) R *= 0.93;
-      if (!dims) { skipped.push({ k: s.k, why: s.room < MIN_BALL + clearance + WALL ? 'too thin' : 'the segments are too short', comp: s.comp }); continue; }
-      joints.push({ ...s, ...dims });
-    }
+    const joints = viable;
     if (!joints.length) throw new Error(`No joint fits at the cut${cuts.length === 1 ? '' : 's'}. The model is too thin there, or the segments are too short: use fewer segments, or cut where the model is thicker.`);
     for (const k of new Set(skipped.map(s => s.k))) {
       const why = skipped.filter(s => s.k === k).map(s => s.why);
@@ -141,9 +135,12 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
         const upper = at(keep(link(zb, h + foot, zb + j.d, h)).rotate([0, 0, 90]), j.x, j.y, j.c);
         adds.push({ j, anchor: lower, solid: lower }, { j, anchor: upper, solid: upper });
       } else {
-        const zp = j.c + h + j.d;                                               // the ball's centre
-        sockets.push(keep(at(w.Manifold.sphere(j.Rc, SEGMENTS), j.x, j.y, zp).trimByPlane([0, 0, 1], j.c + h)));
-        const embed = j.neck * t + 2, z0 = j.c - h - embed;                     // the neck reaches down into the segment below the notch
+        // the ball stands on the lower face on a short neck; the cup hangs from the upper face and wraps over it
+        const zp = j.c - h + j.a, embed = j.neck * t + 2, z0 = j.c - h - embed;      // the ball's centre; how far the neck reaches into the segment below
+        const cavity = at(w.Manifold.sphere(j.Rc, SEGMENTS), j.x, j.y, zp);
+        sockets.push(cavity);
+        const outer = at(w.Manifold.sphere(j.Ro, SEGMENTS), j.x, j.y, zp).trimByPlane([0, 0, 1], zp - j.lip);
+        adds.push({ j, solid: keep(keep(outer).subtract(cavity)), anchor: null });
         const neck = at(w.Manifold.cylinder(zp - z0, j.neck, j.neck, SEGMENTS, false), j.x, j.y, z0);
         const anchor = at(w.Manifold.cylinder(embed - 0.2, j.neck, j.neck, SEGMENTS, false), j.x, j.y, z0);
         adds.push({ j, anchor, solid: keep(at(w.Manifold.sphere(j.R, SEGMENTS), j.x, j.y, zp).add(neck)) });
@@ -161,7 +158,7 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
     for (const b of adds) {
       let best = null, volume = 0;
       for (const piece of pieces) {
-        const v = keep(piece.m.intersect(b.anchor)).volume();
+        const v = keep(piece.m.intersect(b.anchor || b.solid)).volume();
         if (v > volume) { volume = v; best = piece; }
       }
       if (!best) throw new Error(`Could not attach a joint at ${(b.j.c - lo).toFixed(1)} mm along the model. Try a different cut position.`);
@@ -176,6 +173,6 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
       const like = parts[p.pi], name = many ? `Segment ${p.seg + 1} - ${like.name}` : `Segment ${p.seg + 1}`;
       return permute({ ...fromManifold(p.m, like), name, color: like.color, slot: like.slot, seg: p.seg }, axis, true);
     });
-    return { parts: out, cuts, joints: joints.map(j => ({ k: j.k, at: j.c, pivot: hook ? j.c : j.c + j.half + j.d, x: j.x, y: j.y, radius: hook ? j.d : j.R })), bend: allowed, warnings };
+    return { parts: out, cuts, joints: joints.map(j => ({ k: j.k, at: j.c, half: j.half, pivot: hook ? j.c : j.c - j.half + j.a, x: j.x, y: j.y, radius: hook ? j.d : j.R })), bend: allowed, warnings };
   } finally { made.forEach(m => m.delete()); }
 }

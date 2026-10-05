@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { cutPositions, poleOfInaccessibility, jointDims, hookDims, minSegment } = await import('../tools/flexi-maker/joints.js');
+const { cutPositions, poleOfInaccessibility, ballDims, hookDims } = await import('../tools/flexi-maker/joints.js');
 const { makeFlexi } = await import('../tools/flexi-maker/flexi.js');
 const { loadManifold, toManifold } = await import('../tools/mesh-modifier/boolean3d.js');
 const { partStats } = await import('../tools/mesh-modifier/geometry.js');
@@ -28,13 +28,16 @@ test('poleOfInaccessibility: the middle of a square, and the thick end of an L',
   assert.ok(ring.r > 3.9 && (ring.x < 7.5 || ring.x > 22.5 || ring.y < 7.5 || ring.y > 22.5), `a hole must be avoided: ${JSON.stringify(ring)}`);
 });
 
-test('jointDims: the socket mouth traps the ball but lets the neck tilt', () => {
-  for (const tan of [0, 0.1, 0.2, 0.35]) {
-    const d = jointDims(4, 0.4, tan);
-    assert.ok(d, `a joint fits at slope ${tan}`);
-    assert.ok(d.mouth <= 0.92 * d.R && d.mouth - d.neck >= 0.8, JSON.stringify(d));
+test('ballDims: the cup mouth traps the ball but lets the neck tilt, and the faces leave room for both', () => {
+  for (const R of [3, 4, 6, 9]) {
+    const d = ballDims(R, 0.4);
+    assert.ok(d, `a joint fits at R = ${R}`);
+    assert.ok(d.mouth <= 0.92 * R + 1e-9 && d.mouth - d.neck >= 0.8 - 1e-9, JSON.stringify(d));
+    assert.ok(d.a > R + 0.2, 'the ball clears the lower face on its neck');
+    assert.ok(d.b < d.Rc, 'the cavity bites into the upper segment so the cup is attached');
+    assert.ok(d.tilt > 15, `it can bend about ${d.tilt.toFixed(0)} degrees`);
   }
-  assert.equal(jointDims(4, 3, 0), null, 'a clearance this large cannot hold a ball');
+  assert.equal(ballDims(1.5, 0.4), null, 'too small a ball cannot hold a mouth narrower than itself and wider than its neck');
 });
 
 test('flexi bar keeps both colours, prints in place and bends without the pieces touching', async () => {
@@ -45,7 +48,7 @@ test('flexi bar keeps both colours, prints in place and bends without the pieces
   assert.equal(r.parts.length, 6, 'two colours in each of three segments');
   assert.deepEqual([...new Set(r.parts.map(p => p.color))].sort(), ['#0000CC', '#CC0000']);
   for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
-  assert.ok(r.bend > 15, `reports ${r.bend} degrees`);
+  assert.ok(r.bend > 12, `reports ${r.bend} degrees`);
 
   const w = await loadManifold();
   const solids = r.parts.map(p => ({ p, m: toManifold(w, p) }));
@@ -56,6 +59,7 @@ test('flexi bar keeps both colours, prints in place and bends without the pieces
 
   // tilt the upper segments about the first joint by 80 % of the bend the tool reports: still no contact
   const j = r.joints[0], tilt = (list, deg) => list.map(s => ({ m: s.m.translate([-j.x, -j.y, -j.pivot]).rotate([deg, 0, 0]).translate([j.x, j.y, j.pivot]) }));
+  assert.ok(r.joints.every(q => q.pivot > q.at - 6 && q.pivot < q.at + 6), 'the ball sits in the gap between the segments');
   const lower = of(1), upper = [...of(2), ...of(3)];
   for (const sign of [1, -1]) {
     const moved = tilt(upper, sign * 0.8 * r.bend);
@@ -74,25 +78,25 @@ test('thin pieces are reported, and the model still comes out in one orientation
   assert.equal(r.parts.length, 3);
   const xs = r.parts.flatMap(p => [...p.positions].filter((_, i) => i % 3 === 0));
   assert.ok(Math.min(...xs) >= -0.001 && Math.max(...xs) <= 100.001, 'joints stay inside the original length');
-  assert.ok(minSegment(3, 0.4) > 8);
 });
 
 test('nothing is left standing inside the notch, even material wider than the cut section', async () => {
   // a wide flange just below a narrow stem: the cut crosses the stem, but the notch cone dips into the flange
-  const model = [box(-20, -20, 0, 20, 20, 10, '#AA5500', 'Flange'), box(-5, -5, 10, 5, 5, 60, '#0055AA', 'Stem')];
-  const r = await makeFlexi(model, { joint: 'ball', axis: 'z', positions: [12], bend: 20 });
-  const j = r.joints[0], t = Math.tan((r.bend * Math.PI) / 360), h = 0.3;
+  const model = [box(-40, -40, 0, 40, 40, 10, '#AA5500', 'Flange'), box(-8, -8, 10, 8, 8, 80, '#0055AA', 'Stem')];
+  const r = await makeFlexi(model, { joint: 'ball', axis: 'z', positions: [20], bend: 20 });
+  const j = r.joints[0], t = Math.tan((r.bend * Math.PI) / 360), h = j.half;
   for (const p of r.parts) {
     const seg = +p.name.match(/Segment (\d)/)[1];
     for (let i = 0; i < p.positions.length; i += 3) {
       const rho = Math.hypot(p.positions[i] - j.x, p.positions[i + 1] - j.y), z = p.positions[i + 2], edge = (h + rho * t) * 0.98;
-      if (rho < j.radius * 1.6) continue;                                                      // the ball, neck and socket live here
+      if (rho < j.radius * 2.2) continue;                                                      // the ball, neck and socket live here
       if (seg === 1) assert.ok(z <= j.at - edge, `${p.name}: vertex at radius ${rho.toFixed(1)}, z ${z.toFixed(2)} stands in the notch`);
       else assert.ok(z >= j.at + edge, `${p.name}: vertex at radius ${rho.toFixed(1)}, z ${z.toFixed(2)} stands in the notch`);
     }
   }
   for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
   assert.equal(r.parts.length, 3, 'flange, lower stem, upper stem: no stray fragments');
+  assert.ok(Math.min(...r.parts.find(p => p.name.includes('Flange')).positions.filter((_, i) => i % 3 === 2)) >= 0 - 1e-6);
   const w = await loadManifold(), solids = r.parts.map(p => toManifold(w, p));
   for (let a = 0; a < solids.length; a++) for (let b = a + 1; b < solids.length; b++) assert.ok(solids[a].intersect(solids[b]).volume() < 1e-6, `${r.parts[a].name} and ${r.parts[b].name} overlap`);
 });

@@ -54,24 +54,23 @@ export function poleOfInaccessibility(rings) {
 }
 
 /**
- * Sizes of one ball-and-socket joint. The ball (radius R) sits on a neck above the lower segment; the socket in the upper segment is a
- * sphere of R + clearance whose centre is `d` above the upper segment's face. That makes the socket's mouth narrower than the ball, so the
- * ball cannot pull out, but wider than the neck, so it can tilt. `tanA` is the slope of the notch cut around the joint (0 = flat faces):
- * it lifts the mouth, so `d` is searched upward until the mouth is still smaller than the ball. Returns null when no size works.
+ * Sizes of one ball-and-socket joint, built like an articulated figure's: the lower segment carries a ball (radius R) on a short neck, the
+ * upper one a cup that wraps over the ball. The cup is a shell outside the segment (inner sphere R + clearance, wall `wall` thick) cut off
+ * `lip` below the ball's centre, so its mouth is narrower than the ball (it cannot pull out) but wider than the neck (it can tilt).
+ *  a  ball centre above the lower segment's face   b  ball centre below the upper segment's face (the cavity bites 1 mm into it)
+ *  G  distance between the two faces               half  G / 2
+ * Returns null when no mouth works.
  */
-export function jointDims(R, clearance, tanA = 0) {
-  const n = Math.max(1.2, 0.4 * R), Rc = R + clearance, a = 1 + tanA * tanA;
-  for (let d = 0.5 * R; d <= 1.3 * R + 1e-9; d += 0.05 * R) {
-    const disc = d * d * tanA * tanA - a * (d * d - Rc * Rc);
-    if (disc < 0) continue;
-    const mouth = (d * tanA + Math.sqrt(disc)) / a;                           // radius where the notch face meets the socket sphere
-    if (mouth <= 0.92 * R && mouth - n >= 0.8) return { R, Rc, neck: n, d, mouth };
-  }
-  return null;
+export function ballDims(R, clearance) {
+  const neck = Math.max(1.2, 0.4 * R), Rc = R + clearance, wall = 1.4, Ro = Rc + wall;
+  const lo = Math.sqrt(Math.max(Rc * Rc - (0.92 * R) ** 2, 0)), hi = Math.sqrt(Math.max(Rc * Rc - (neck + 0.8) ** 2, 0));   // mouth <= 0.92 R, mouth >= neck + 0.8
+  const lip = Math.max(0.45 * R, lo);
+  if (lip > hi) return null;
+  const a = 1.3 * R, b = Rc - 1, G = a + b, mouth = Math.sqrt(Rc * Rc - lip * lip);
+  const neckTilt = (Math.atan((mouth - neck) / lip) * 180) / Math.PI;                                  // where the neck meets the mouth
+  const rimTilt = (Math.asin(Math.min(1, (a - lip) / Math.sqrt(Ro * Ro - lip * lip))) * 180) / Math.PI;     // where the lower face meets the cup's rim
+  return { R, Rc, Ro, neck, lip, a, b, G, half: G / 2, mouth, tilt: Math.min(neckTilt, rimTilt) };
 }
-
-/** Thickness a segment needs to hold a socket at one end and a ball's neck at the other. */
-export const minSegment = (R, clearance) => 1.8 * R + clearance + 4.1;
 
 /**
  * Sizes of one hook-and-loop (chain link) joint. The lower segment carries a loop standing in the x-z plane, the upper one a loop hanging
