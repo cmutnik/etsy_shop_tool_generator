@@ -23,6 +23,15 @@ let result = null;         // { group, meta, size }
 let font = null, fontRequested = false;
 let timer = null, framed = false, view = 'print', buildId = 0, engineReady = false;
 const hist = createHistory(100);
+/** Hole directions: the axis the hole runs along, which end it is drilled from, and the labels for its two position boxes. */
+const HOLE_DIRECTIONS = {
+  down: { axis: 'z', from: 1, a: 'Left / right (mm)', b: 'Front / back (mm)' },
+  up: { axis: 'z', from: -1, a: 'Left / right (mm)', b: 'Front / back (mm)' },
+  'x+': { axis: 'x', from: 1, a: 'Front / back (mm)', b: 'Height above the bed (mm)' },
+  'x-': { axis: 'x', from: -1, a: 'Front / back (mm)', b: 'Height above the bed (mm)' },
+  'y+': { axis: 'y', from: 1, a: 'Left / right (mm)', b: 'Height above the bed (mm)' },
+  'y-': { axis: 'y', from: -1, a: 'Left / right (mm)', b: 'Height above the bed (mm)' },
+};
 let partsVersion = 0, restoring = false, commitTimer = null;
 
 const round = (v, d = 2) => +v.toFixed(d);
@@ -96,6 +105,14 @@ function buildPartList() {
     return li;
   }));
 }
+
+// a sideways hole needs a height: start at half the model's height instead of on the bed
+$('holeDir').addEventListener('change', () => {
+  if (!result) return;
+  const sideways = HOLE_DIRECTIONS[$('holeDir').value]?.axis !== 'z';
+  $('holeA').value = 0;
+  $('holeB').value = sideways ? round(result.sizeObj.height / 2, 1) : 0;
+});
 
 // ---------- repair ----------
 $('repair').addEventListener('click', () => {
@@ -230,6 +247,9 @@ function syncUI() {
   $('labelOptions').hidden = !$('labelOn').checked;
   $('tabSlotRow').hidden = $('tabStyle').value !== 'slot';
   $('holeOptions').hidden = !$('holeOn').checked;
+  const hd = HOLE_DIRECTIONS[$('holeDir').value] || HOLE_DIRECTIONS.down;
+  $('holeALabel').textContent = hd.a;
+  $('holeBLabel').textContent = hd.b;
   $('splitOptions').hidden = !$('splitOn').checked;
   $('splitPegOptions').hidden = $('splitKeep').value !== 'both';
   const engraved = $('labelMode').value === 'engraved';
@@ -262,7 +282,8 @@ async function build() {
       if (id !== buildId) return;
       $('status').textContent = source.fileName || '';
       if ($('holeOn').checked) {
-        const h = await cutHole(parts, { x: num('holeX') || 0, y: num('holeY') || 0, diameter: num('holeD'), depth: num('holeDepth') || null });
+        const dir = HOLE_DIRECTIONS[$('holeDir').value] || HOLE_DIRECTIONS.down;
+        const h = await cutHole(parts, { axis: dir.axis, from: dir.from, a: num('holeA') || 0, b: num('holeB') || 0, diameter: num('holeD'), depth: num('holeDepth') || null });
         parts = h.parts; cutDone = true;
         if (!h.touched) warnings.push('The hole does not touch the model. Move it onto the model.');
       }

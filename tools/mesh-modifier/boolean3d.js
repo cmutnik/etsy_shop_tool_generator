@@ -55,15 +55,33 @@ async function subtractFrom(parts, box, makeCutter) {
   } finally { made.forEach(m => m.delete()); }
 }
 
+const AXIS = { x: 0, y: 1, z: 2 };
+
 /**
- * A round hole straight down through the model. opts: { x, y, diameter, depth } with `depth` = how far down from the model's
- * top (null or 0 for all the way through). Returns { parts, touched } where `touched` says whether the hole met any material.
+ * A round hole along one axis. opts: { axis: 'z' | 'x' | 'y', from: 1 | -1, a, b, diameter, depth }
+ *  axis   the direction the hole runs: 'z' is straight down / up, 'x' and 'y' are sideways
+ *  from   the end it is drilled from: 1 = the high end (top, +X, +Y), -1 = the low end (bottom, -X, -Y)
+ *  a, b   the hole's centre across the axis: z -> (x, y); x -> (y, z); y -> (x, z), all in model coordinates (centred, on the bed at z = 0)
+ *  depth  how far in from that end; null or 0 goes all the way through
+ * `x` and `y` are accepted instead of `a` and `b` for a vertical hole. Returns { parts, touched }: `touched` says whether the hole met any material.
  */
-export async function cutHole(parts, { x, y, diameter, depth = null }) {
+export async function cutHole(parts, { axis = 'z', from = 1, a, b, x, y, diameter, depth = null }) {
+  if (!(axis in AXIS)) throw new Error(`Unknown hole direction: ${axis}`);
+  if (a === undefined && axis === 'z') { a = x; b = y; }
   if (!(diameter >= 1)) throw new Error('The hole must be at least 1 mm across.');
-  const top = Math.max(...parts.map(p => partBounds(p).max[2])), bottom = depth ? top - depth : -1, r = diameter / 2;
-  const box = { min: [x - r, y - r, bottom], max: [x + r, y + r, top + 1] };
-  const out = await subtractFrom(parts, box, w => w.Manifold.cylinder(top + 1 - bottom, r, r, SEGMENTS, false).translate([x, y, bottom]));
+  if (!Number.isFinite(a) || !Number.isFinite(b)) throw new Error('Enter where the hole goes.');
+  const k = AXIS[axis], r = diameter / 2;
+  let lo = Infinity, hi = -Infinity;
+  for (const p of parts) { const q = partBounds(p); lo = Math.min(lo, q.min[k]); hi = Math.max(hi, q.max[k]); }
+  const start = depth ? (from > 0 ? hi - depth : lo - 1) : lo - 1, end = depth ? (from > 0 ? hi + 1 : lo + depth) : hi + 1;
+  const centre = axis === 'z' ? [a, b, null] : axis === 'x' ? [null, a, b] : [a, null, b];     // across-axis position; null on the hole's own axis
+  const min = centre.map((c, i) => (c === null ? start : c - r)), max = centre.map((c, i) => (c === null ? end : c + r));
+  const out = await subtractFrom(parts, { min, max }, w => {
+    const cyl = w.Manifold.cylinder(end - start, r, r, SEGMENTS, false);               // along +z from 0
+    if (axis === 'z') return cyl.translate([a, b, start]);
+    if (axis === 'x') return cyl.rotate([0, 90, 0]).translate([start, a, b]);           // +z turned onto +x
+    return cyl.rotate([-90, 0, 0]).translate([a, start, b]);                          // +z turned onto +y
+  });
   return { parts: out, touched: out.length !== parts.length || out.some(p => !parts.includes(p)) };
 }
 

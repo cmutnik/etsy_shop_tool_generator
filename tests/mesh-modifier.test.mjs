@@ -461,3 +461,41 @@ test('infill: it exactly fills the engraved pocket, so body + infill is the orig
   const back = await parse3MF(await export3MF(group, { title: 't', parts: meta }).arrayBuffer());
   assert.deepEqual(back.map(p => [p.name, p.color, p.slot]), [['Slab', '#CC2222', 1], ['Engraving infill', '#111111', 2]]);
 });
+
+// ---------- holes in any direction ----------
+test('hole: sideways, from either end, and up from the bottom', async () => {
+  const circle = Math.PI * 2 * 2;                                              // r = 2 mm: pi r^2 = 12.57 mm2
+  const run = async opts => { const r = await cutHole(slab(), { diameter: 4, ...opts }); assert.ok(closed(r.parts), JSON.stringify(opts)); return r; };
+  const alongX = await run({ axis: 'x', a: 0, b: 5 });                          // y = 0, height 5, through the 40 mm length
+  within(volume(alongX.parts), 8000 - circle * 40, 8000 * 0.005, 'through along x');
+  const alongY = await run({ axis: 'y', a: 5, b: 5 });                          // x = 5, height 5, through the 20 mm width
+  within(volume(alongY.parts), 8000 - circle * 20, 8000 * 0.005, 'through along y');
+  const fromRight = await run({ axis: 'x', from: 1, a: 0, b: 5, depth: 10 });
+  const fromLeft = await run({ axis: 'x', from: -1, a: 0, b: 5, depth: 10 });
+  within(volume(fromRight.parts), 8000 - circle * 10, 8000 * 0.005, 'blind from +X');
+  within(volume(fromLeft.parts), 8000 - circle * 10, 8000 * 0.005, 'blind from -X');
+  // the two blind holes are at opposite ends
+  const slabs = slab();
+  const near1 = (await cutHole(slabs, { axis: 'x', from: 1, a: 0, b: 5, diameter: 4, depth: 10 })).parts[0];
+  assert.ok(partStats(near1).volume < 8000 && bounds(near1).max[0] > 19.99);
+  const up = await run({ axis: 'z', from: -1, a: 0, b: 0, depth: 4 });
+  within(volume(up.parts), 8000 - circle * 4, 8000 * 0.005, 'blind up from the bottom');
+  const bb = bounds(up.parts[0]);
+  assert.ok(bb.max[2] > 9.99 && bb.min[2] < 0.01, 'the outside of the slab is unchanged');
+});
+
+test('hole: a sideways hole above the model or beside it misses, and bad input is refused', async () => {
+  assert.equal((await cutHole(slab(), { axis: 'x', a: 0, b: 20, diameter: 4 })).touched, false, 'above the model');
+  assert.equal((await cutHole(slab(), { axis: 'y', a: 50, b: 5, diameter: 4 })).touched, false, 'beside the model');
+  await assert.rejects(cutHole(slab(), { axis: 'q', a: 0, b: 0, diameter: 4 }), /Unknown hole direction/);
+  await assert.rejects(cutHole(slab(), { axis: 'x', a: NaN, b: 5, diameter: 4 }), /where the hole goes/);
+});
+
+test('hole: a hole along x really is along x (the pocket is visible only from the sides)', async () => {
+  const r = await cutHole(slab(), { axis: 'x', a: 0, b: 5, diameter: 4, depth: 6, from: 1 });
+  // a blind hole 6 mm deep from +X: at x = 17 (inside) there is a hole at (y 0, z 5); at x = 10 (beyond its end) there is not
+  const p = r.parts[0];
+  const holeAt = x => Array.from(p.positions).some((v, i) => i % 3 === 0 && Math.abs(v - x) < 0.01);   // vertices at that x: only the hole's floor can be there
+  assert.ok(holeAt(14), 'the hole ends at x = 14 (20 - 6): its floor is there');
+  assert.ok(!holeAt(10), 'nothing was cut at x = 10');
+});

@@ -85,15 +85,25 @@
       <fieldset>
         <legend><label class="inline" style="margin:0"><input type="checkbox" id="holeOn"> Drill a hole</label></legend>
         <div id="holeOptions" hidden>
+          <label>Direction
+            <select id="holeDir">
+              <option value="down">Straight down from the top</option>
+              <option value="up">Straight up from the bottom</option>
+              <option value="x+">Sideways, from the right (+X)</option>
+              <option value="x-">Sideways, from the left (-X)</option>
+              <option value="y+">Sideways, from the back (+Y)</option>
+              <option value="y-">Sideways, from the front (-Y)</option>
+            </select>
+          </label>
           <div class="row">
-            <label>Left / right (mm) <input type="number" id="holeX" value="0" step="1"></label>
-            <label>Front / back (mm) <input type="number" id="holeY" value="0" step="1"></label>
+            <label><span id="holeALabel">Left / right (mm)</span> <input type="number" id="holeA" value="0" step="1"></label>
+            <label><span id="holeBLabel">Front / back (mm)</span> <input type="number" id="holeB" value="0" step="1"></label>
           </div>
           <div class="row">
             <label>Diameter (mm) <input type="number" id="holeD" value="5" min="1" max="100" step="0.5"></label>
             <label>Depth (mm, 0 = all the way) <input type="number" id="holeDepth" value="0" min="0" step="0.5"></label>
           </div>
-          <small class="muted">A round hole straight down from the top, measured from the model's centre. Needs a closed (watertight) model. For a hole at the edge to hang from, the hanging tab below is usually stronger.</small>
+          <small class="muted">A round hole in the direction you pick, measured from the model's centre (and from the bed for height). Depth 0 goes all the way through; otherwise it is measured from the end you drill from. Needs a closed (watertight) model. Keep at least 2 mm of wall around a hole you hang something from; a hanging tab is stronger at an edge.</small>
         </div>
       </fieldset>
 
