@@ -18,7 +18,7 @@ export async function loadManifold() {
 const SEGMENTS = 64;
 const notClosed = part => new Error(`"${part.name}" is not a closed (watertight) solid, so it cannot be cut. Use "Repair open edges" first, or untick that part.`);
 
-function toManifold(w, part) {
+export function toManifold(w, part) {
   const mesh = new w.Mesh({ numProp: 3, vertProperties: part.positions, triVerts: part.indices });
   mesh.merge();
   let m;
@@ -27,7 +27,7 @@ function toManifold(w, part) {
   return m;
 }
 
-function fromManifold(m, like) {
+export function fromManifold(m, like) {
   const mesh = m.getMesh(), n = mesh.numProp, count = mesh.vertProperties.length / n;
   let positions = mesh.vertProperties;
   if (n !== 3) { positions = new Float32Array(count * 3); for (let i = 0; i < count; i++) for (let k = 0; k < 3; k++) positions[i * 3 + k] = mesh.vertProperties[i * n + k]; }

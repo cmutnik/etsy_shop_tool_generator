@@ -12,6 +12,7 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [Image Prep](tools/image-prep/) | live | Pictures to black and white, or to SVG line art, ready for the stamp generator |
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
+| [Flexi Maker](tools/flexi-maker/) | live | Turn a model into an articulated, print-in-place flexi with chain-link (hook and loop) or ball-and-socket joints; keeps 3MF colours |
 | [3D Wedding Invite](tools/wedding-invite-3d/) | planned | Invitation photo or SVG to a layered 3D print |
 | [STL / 3MF Modifier](tools/mesh-modifier/) | live | Open an existing model, resize / rotate / mirror it, add a hanging tab or raised text; keeps 3MF parts and colours |
 
@@ -32,6 +33,15 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Undo / redo:** every change to the settings, part list, size, repair and tab/text/cut options can be undone and redone (buttons above the preview, or Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z outside a text box). A burst of typing is one step; opening another file starts a fresh history.
 - **Repair:** when a model has open edges, a button merges duplicate points, removes degenerate and duplicate triangles, turns inside-out faces round and fills small holes (including concave ones). It only reports a part as fixed when it really is a closed solid afterwards, tells you what it could not fix, and can be undone.
 - Reports triangle count, volume and open edges.
+
+### Flexi Maker
+
+- **Open** an STL or 3MF (colours and filament slots are kept), set the size and direction, choose which way to cut across and how many segments, and press **Make it flexi**. The cut planes are shown in the preview first; you can also type exact cut positions.
+- **Hook-and-loop (chain link) or ball-and-socket joints that print assembled.** Every cut gets a joint where the biggest circle fits the cross-section; a V-notch is removed around it so the pieces can tilt. Hook and loop (the default) puts a closed loop on each segment and links the two at right angles like a chain, so each pair swings and twists; the segments end up a link-length apart. Ball and socket hides a ball in the segment instead. Where a cut crosses several separate pieces (two legs, say) each gets its own joint; pieces too thin for one stay solid, with a warning.
+- **Colours are maintained.** Every part keeps its colour in every segment, and a joint takes the colour of the part it grows out of. Download the 3MF for colours and filament slots (an STL merges everything).
+- **Try the bend:** after making it, a slider in the preview tilts the segments about their real joint centres so you can see the joints move. It is only a picture (the download is the straight model).
+- **Tuning:** bend per joint (reduced with a message when the pieces are too short), ball size, joint clearance and segment gap. The model is laid on its side for printing by default so the joint gaps are vertical.
+- Uses [manifold-3d](https://github.com/elalish/manifold) (downloaded when you press the button) and needs closed (watertight) parts. Tested by tilting the finished pieces and checking they never touch, and that the ball cannot be pulled out of its socket. Not yet test-printed: expect to tune the clearance for your printer.
 
 ### Image Prep
 
