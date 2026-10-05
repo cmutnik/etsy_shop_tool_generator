@@ -60,8 +60,9 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
     const sites = [], skipped = [];
     cuts.forEach((c, k) => {
       const section = keep(whole.slice(c));
-      for (const comp of section.decompose()) {
-        keep(comp);
+      const comps = section.decompose().filter(c => keep(c) && !c.isEmpty());
+      if (!comps.length) skipped.push({ k, why: 'empty', comp: null });          // the cut passes between separate parts
+      for (const comp of comps) {
         const rings = comp.toPolygons().map(r => r.map(p => [p[0], p[1]])), area = comp.area();
         const pole = area >= 4 ? poleOfInaccessibility(rings) : null;
         if (!pole) { skipped.push({ k, why: 'a sliver', comp }); continue; }
@@ -99,11 +100,10 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
     const joints = viable;
     if (!joints.length) throw new Error(`No joint fits at the cut${cuts.length === 1 ? '' : 's'}. The model is too thin there, or the segments are too short: use fewer segments, or cut where the model is thicker.`);
     for (const k of new Set(skipped.map(s => s.k))) {
-      const why = skipped.filter(s => s.k === k).map(s => s.why);
-      const at = `${(cuts[k] - lo).toFixed(1)} mm`, here = joints.filter(j => j.k === k).length;
-      warnings.push(here
-        ? `At ${at} along the model, ${why.length} thin piece${why.length === 1 ? ' is' : 's are'} left solid (${[...new Set(why)].join(', ')}), so ${why.length === 1 ? 'it limits' : 'they limit'} the bend there.`
-        : `At ${at} along the model nothing fits a joint (${[...new Set(why)].join(', ')}), so the cut is left solid. Move it or use fewer segments.`);
+      const why = skipped.filter(s => s.k === k).map(s => s.why), at = `${(cuts[k] - lo).toFixed(1)} mm`, here = joints.filter(j => j.k === k).length;
+      if (!here && why.every(x => x === 'empty')) warnings.push(`The cut at ${at} along the model falls in the space between separate parts, so there is nothing to cut or join there. Move it onto the model, or use fewer segments.`);
+      else if (!here) warnings.push(`At ${at} along the model nothing fits a joint (${[...new Set(why.filter(x => x !== 'empty'))].join(', ')}), so the cut is left solid. Move it or use fewer segments.`);
+      else warnings.push(`At ${at} along the model, ${why.length} thin piece${why.length === 1 ? ' is' : 's are'} left solid (${[...new Set(why)].join(', ')}), so ${why.length === 1 ? 'it limits' : 'they limit'} the bend there.`);
     }
 
     // 5. the notch of every joint, then what it is built from: a socket and a ball, or two interlocked loops
@@ -119,7 +119,7 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
         const dx = j.x - o.x, dy = j.y - o.y, len = Math.hypot(dx, dy);
         cut = keep(cut.trimByPlane([dx / len, dy / len, 0], (dx * (j.x + o.x) / 2 + dy * (j.y + o.y) / 2) / len));
       }
-      for (const sk of skipped) if (sk.k === j.k) {                              // pieces too thin for a joint stay whole
+      for (const sk of skipped) if (sk.k === j.k && sk.comp) {                   // pieces too thin for a joint stay whole
         cut = keep(cut.subtract(at(sk.comp.extrude(2 * rim + 2), 0, 0, j.c - rim - 1)));
       }
       voids.push(cut);

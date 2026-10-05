@@ -7,6 +7,7 @@ Turn an STL or 3MF into an articulated, print-in-place model. Everything runs in
 |---|---|
 | `index.html`, `flexi-maker.js` | The page: load, orient, preview the cut planes, make, download |
 | `flexi.js` | `makeFlexi(parts, opts)`: cuts, notches, sockets and balls with manifold-3d. Parts in, parts out; keeps each part's colour and slot |
+| `prepare.js` | `simplifyParts()`: bring a heavy model down with manifold's simplify, within a tolerance; the page's Repair button reuses `tools/mesh-modifier/repair.js` |
 | `joints.js` | Pure maths: cut positions, the pole of inaccessibility (where a joint fits), joint dimensions |
 
 Reuses the loader and parts helpers from `tools/mesh-modifier/` (`geometry.js`, `boolean3d.js`).

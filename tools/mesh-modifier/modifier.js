@@ -1,7 +1,7 @@
 // Copyright (c) 2025 cmutnik
 import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
-import { parseMesh, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
+import { readModelFiles, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
 import { loadFont, parseFont, populateFontSelect, FONTS } from '../../shared/js/fonts.js';
 import { transformParts, buildGroup, partStats, boundsOfParts, flipPart, layFlatAngles, assignSlots, DEFAULT_COLOR } from './geometry.js';
 import { buildTab, buildLabel, placeLabel, buildInfill, TAB_STYLES, TAB_SIDES } from './attach.js';
@@ -51,16 +51,17 @@ $('fontFile').addEventListener('change', async e => {
 });
 
 // ---------- loading ----------
-async function load(file) {
-  if (!file) return;
-  $('status').textContent = `Reading ${file.name}...`;
+async function load(files) {
+  if (!files || !files.length) return;
+  $('status').textContent = 'Reading the file...';
   try {
-    let parts = await parseMesh(file.name, await file.arrayBuffer());
+    const { file, parts: read, notes } = await readModelFiles(files);
+    let parts = read;
     let stats = parts.map(partStats);
     const inside = stats.filter(x => x.volume < 0).length;                     // inside-out parts: faces point inwards
     if (inside) { parts = parts.map((p, i) => (stats[i].volume < 0 ? flipPart(p) : p)); stats = parts.map(partStats); }
     if (stats.reduce((s, x) => s + x.triangles, 0) > MAX_TRIANGLES) throw new Error('That model has too many triangles for the browser.');
-    source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name), flipped: inside, original: null, repairLog: [], include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null) };
+    source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name), notes, flipped: inside, original: null, repairLog: [], include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null) };
     buildPartList();
     resetTransform();
     framed = false;
@@ -74,11 +75,11 @@ async function load(file) {
     showError(e.message || String(e));
   }
 }
-$('file').addEventListener('change', e => load(e.target.files[0]));
+$('file').addEventListener('change', e => load(e.target.files));
 const drop = $('viewport');
 drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drop'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('drop'));
-drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drop'); load(e.dataTransfer.files[0]); });
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drop'); load(e.dataTransfer.files); });
 
 function resetTransform() {
   scale = [1, 1, 1];
@@ -354,6 +355,7 @@ async function build() {
   const u = num('unit') * Math.cbrt(scale[0] * scale[1] * scale[2]);
   $('info').textContent = `${round(w, 1)} x ${round(d, 1)} x ${round(h, 1)} mm  |  ${tris.toLocaleString()} triangles  |  about ${round((vol * Math.pow(u, 3)) / 1000, 1)} cm³ of material (solid)  |  ${parts.length} part${parts.length === 1 ? '' : 's'}`;
 
+  warnings.unshift(...(source.notes || []));
   if (source.flipped) warnings.unshift(`${source.flipped} part${source.flipped === 1 ? ' was' : 's were'} inside-out (faces pointing inwards) and ${source.flipped === 1 ? 'has' : 'have'} been turned the right way round.`);
   const srcOpen = source.stats.some((x, i) => source.include[i] && x.openEdges > 0);
   $('repairBox').hidden = !(srcOpen || source.original);

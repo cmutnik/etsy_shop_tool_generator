@@ -20,7 +20,7 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 
 ### STL / 3MF Modifier
 
-- **Open** an `.stl` (binary or ASCII) or `.3mf`, by file picker or drag and drop. The file is read in the page and never uploaded.
+- **Open** an `.stl` (binary or ASCII), `.3mf` or `.obj`, by file picker or drag and drop. **Coloured OBJ:** pick the `.obj` and its `.mtl` together; each material becomes a part with its colour (a model with only groups is split by group; one coloured point by point, as AI-generated and scanned models usually are, loads as one solid in its average colour, because colour patches of a single surface are not printable parts. Vertex colours are split into parts only when each colour is a closed solid of its own). Image textures cannot be printed, so a textured material gets its plain colour and a note says so; an OBJ saved Y-up gets a hint to rotate it. The file is read in the page and never uploaded.
 - **Size and orientation:** type a width, depth or height in mm (or a percentage), with or without keeping proportions; rotate in 90-degree steps or any angle; mirror; centre on the bed and drop the lowest point to Z = 0; inch / cm files converted to mm.
 - **Lay flat:** one click turns the model so its largest flat face rests on the bed.
 - **Parts and filament slots:** each part of a multi-part model can be left out, recoloured, or given a filament slot (1-16). On auto, parts of the same colour share a slot; slots already in a 3MF are kept, and the 3MF you download carries them. A part that was inside-out is turned the right way round automatically.
@@ -36,11 +36,12 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 
 ### Flexi Maker
 
-- **Open** an STL or 3MF (colours and filament slots are kept), set the size and direction, choose which way to cut across and how many segments, and press **Make it flexi**. The cut planes are shown in the preview first; you can also type exact cut positions.
+- **Open** an STL, 3MF or OBJ (with its .mtl; colours and filament slots are kept), set the size and direction, choose which way to cut across and how many segments, and press **Make it flexi**. The cut planes are shown in the preview first; you can also type exact cut positions.
 - **Hook-and-loop (chain link) or ball-and-socket joints that print assembled.** Every cut gets a joint where the biggest circle fits the cross-section; a V-notch is removed around it so the pieces can tilt. Hook and loop (the default) puts a closed loop on each segment and links the two at right angles like a chain, so each pair swings and twists; the segments end up a link-length apart. Ball and socket puts a ball on a short neck on one segment and a cup over it on the next, like an articulated figure. Where a cut crosses several separate pieces (two legs, say) each gets its own joint; pieces too thin for one stay solid, with a warning.
 - **Colours are maintained.** Every part keeps its colour in every segment, and a joint takes the colour of the part it grows out of. Download the 3MF for colours and filament slots (an STL merges everything).
 - **Try the bend:** after making it, a slider in the preview tilts the segments about their real joint centres so you can see the joints move. It is only a picture (the download is the straight model).
 - **Tuning:** bend per joint (reduced with a message when the pieces are too short), ball size or bar thickness, and joint clearance. The model is laid on its side for printing by default so the joint gaps are vertical.
+- **Fix the model:** a box appears when a part is not watertight or the model is heavy. *Repair open edges* closes small gaps and cracks (undoable). *Reduce triangles* merges tiny edges down to a target count (default 100,000) while never moving the surface more than the distance you set (default 0.2 mm); a 320,000-triangle sphere drops to about 30,000 with a 0.03 mm change. It only works on closed parts, and the page names any part it could not close. Models over 150,000 triangles are slow to cut, and over 600,000 are refused until reduced.
 - Uses [manifold-3d](https://github.com/elalish/manifold) (downloaded when you press the button) and needs closed (watertight) parts. Tested by tilting the finished pieces and checking they never touch, and that the ball cannot be pulled out of its socket. Not yet test-printed: expect to tune the clearance for your printer.
 
 ### Image Prep

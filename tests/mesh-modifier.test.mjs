@@ -144,7 +144,7 @@ test('3MF: units, build transforms, components and per-triangle colours', async 
 test('3MF: errors are readable', async () => {
   await assert.rejects(parse3MF(Uint8Array.from([1, 2, 3])), /zip/);
   await assert.rejects(parse3MF(zipStore([['x.txt', 'hi']])), /no model/);
-  await assert.rejects(parseMesh('thing.obj', new ArrayBuffer(0)), /\.stl or \.3mf/);
+  await assert.rejects(parseMesh("thing.ply", new ArrayBuffer(0)), /\.stl, \.3mf or \.obj/);
 });
 
 // ---------- hanging tab ----------

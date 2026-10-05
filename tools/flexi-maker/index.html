@@ -39,13 +39,13 @@
     <section class="controls" id="controls">
       <fieldset>
         <legend>Model</legend>
-        <label>Open an STL or 3MF file
-          <input type="file" id="file" accept=".stl,.3mf">
+        <label>Open an STL, 3MF or OBJ file
+          <input type="file" id="file" accept=".stl,.3mf,.obj,.mtl" multiple>
         </label>
         <label>The file's units
           <select id="unit"><option value="1" selected>Millimetres</option><option value="10">Centimetres</option><option value="25.4">Inches</option></select>
         </label>
-        <small class="muted">3MF files carry their own units, so leave this on millimetres for them. You can also drag a file onto the preview.</small>
+        <small class="muted">3MF files carry their own units, so leave this on millimetres for them. For a coloured OBJ, choose the .obj and its .mtl file together (hold Ctrl or Cmd), or drag both onto the preview.</small>
         <ul id="partList"></ul>
         <small class="muted" id="partHint" hidden>Every part keeps its colour in every segment. Untick a part to leave it out.</small>
       </fieldset>
@@ -88,6 +88,22 @@
         <label class="inline"><input type="checkbox" id="onSide" checked> Lay it on its side for printing (recommended)</label>
         <small class="muted">Each cut becomes a joint that prints already assembled. <b>Hook and loop</b> gives each segment a closed loop and links the two at right angles, like a chain, so every pair can swing and twist; the segments end up a link-length apart. <b>Ball and socket</b> puts a ball on a short neck on one segment and a cup over it on the next, like an articulated figure; the cup's mouth is narrower than the ball, so it cannot pull out. Clearance is the space each moving part needs: 0.3-0.4 mm suits most 0.4 mm nozzles, bigger if joints fuse. Laying the model on its side prints the joints with vertical gaps, which prints cleanly; standing it up makes each joint a flat overhang.</small>
         <button id="make" class="primary" type="button" disabled>Make it flexi</button>
+      </fieldset>
+
+      <fieldset id="fixBox" hidden>
+        <legend>Fix the model</legend>
+        <small class="muted" id="fixMsg"></small>
+        <div class="row">
+          <button id="repair" type="button" class="small" title="Merge duplicate points, remove bad triangles, fix inside-out faces and fill small holes">Repair open edges</button>
+          <button id="undoFix" type="button" class="small" hidden>Undo fixes</button>
+        </div>
+        <div class="row">
+          <label>Reduce to about (triangles) <input type="number" id="reduceTo" value="100000" min="5000" max="400000" step="5000"></label>
+          <label>Surface may move up to (mm) <input type="number" id="maxDev" value="0.2" min="0.01" max="5" step="0.05"></label>
+        </div>
+        <button id="reduce" type="button" class="small">Reduce triangles</button>
+        <div id="fixReport" class="info"></div>
+        <small class="muted">Joints are built by 3D cutting, which needs every part to be a closed solid and works best under about 150,000 triangles. Repair closes small gaps and cracks. Reduce merges tiny edges (scans and sculpts have far more triangles than they need) and never moves the surface by more than the amount you set; it only works on closed parts. A part that still will not close can be unticked; it is then left out of the result.</small>
       </fieldset>
 
       <div id="download" class="row">

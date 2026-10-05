@@ -150,3 +150,35 @@ test('hook and loop: every cut separates, and the wide part under a narrow cut i
   const r = await makeFlexi(model, { axis: 'z', positions: [40] });
   for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
 });
+
+test('simplifyParts: a heavy closed model comes down, stays closed, keeps its colour, and open parts are left alone', async () => {
+  const { simplifyParts } = await import('../tools/flexi-maker/prepare.js');
+  const w = await loadManifold();
+  const sphere = w.Manifold.sphere(20, 500);                                    // 125,000 triangles
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+  const dense = { ...fromManifold(sphere, { name: 'Ball' }), name: 'Ball', color: '#CC0000' };
+  sphere.delete();
+  const open = box(0, 0, 0, 10, 10, 10, '#00AA00', 'Open');
+  open.indices = open.indices.slice(0, open.indices.length - 3);                // drop a triangle: not closed any more
+  const r = await simplifyParts([dense, open], { target: 20000, maxDeviation: 0.3 });
+  assert.ok(r.before > 120000);
+  assert.ok(r.after <= 20000 && r.reached, `reduced to ${r.after}`);
+  assert.ok(r.deviation <= 0.3 + 1e-9);
+  assert.equal(r.parts[0].color, '#CC0000');
+  assert.equal(partStats(r.parts[0]).openEdges, 0, 'still a closed solid');
+  assert.equal(r.parts[1], open, 'the open part is untouched');
+  assert.deepEqual(r.open, ['Open']);
+  // the surface barely moved: same volume to within a fraction of a percent
+  const v0 = partStats(dense).volume, v1 = partStats(r.parts[0]).volume;
+  assert.ok(Math.abs(v1 - v0) / v0 < 0.01, `volume changed ${(100 * Math.abs(v1 - v0) / v0).toFixed(2)} %`);
+  const small = await simplifyParts([open], { target: 100 });
+  assert.equal(small.reached, true, 'already small enough: returned as is');
+});
+
+test('a cut that falls between two separate parts says so instead of calling it a sliver', async () => {
+  const two = [box(0, -15, -15, 40, 15, 15, '#AA0000', 'Left'), box(100, -15, -15, 140, 15, 15, '#0000AA', 'Right')];
+  const r = await makeFlexi(two, { joint: 'ball', axis: 'x', positions: [20, 70] });
+  assert.equal(r.joints.length, 1, 'only the cut through a part gets a joint');
+  assert.ok(r.warnings.some(w => /space between separate parts/.test(w)), r.warnings.join(' | '));
+  assert.ok(!r.warnings.some(w => /sliver/.test(w)));
+});
