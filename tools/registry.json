@@ -36,7 +36,15 @@
   {
     "id": "mesh-modifier",
     "title": "STL / 3MF Modifier",
-    "description": "Scale, split, add text or hanging holes to an existing model.",
-    "status": "idea"
+    "description": "Open an STL or 3MF, then resize, rotate, mirror, drill holes, engrave or raise text, cut in two with pegs, or add a hanging tab. Keeps 3MF parts and colours.",
+    "status": "live",
+    "path": "mesh-modifier/"
+  },
+  {
+    "id": "flexi-maker",
+    "title": "Flexi Maker",
+    "description": "Turn a model into an articulated, print-in-place flexi: cut it into segments joined by ball-and-socket joints. Keeps 3MF colours.",
+    "status": "live",
+    "path": "flexi-maker/"
   }
 ]

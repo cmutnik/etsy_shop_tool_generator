@@ -7,6 +7,9 @@
 - **QR Code Stand** (`tools/qr-stand/`): plate with icon/title banner and insertion tab, slotted base, assembled preview, STL and colour 3MF. Ported from `invite2svg/`; the Python page can be removed once you are happy with it.
 - **QR Code Keychain** (`tools/qr-keychain/`): QR plate + loop, raised/engraved, scan check, STL + colour 3MF. Ported from `invite2svg/`; the Python page can be removed once you are happy with it.
 
+- **STL / 3MF Modifier** (`tools/mesh-modifier/`): STL and 3MF import (own readers, parts and colours kept), size / rotate / mirror / bed placement, hanging tab, raised text, lay flat on largest face, 3D cuts with manifold-3d (hole, engraved text, split with pegs), mesh repair (weld, clean, orient, fill holes, with undo), filament slots (read from 3MF, shared by colour, overridable), undo / redo, holes in six directions, engraved text with a second-colour infill part, per-part colour / include, inside-out fix, STL and multi-part 3MF export.
+- **Flexi Maker** (`tools/flexi-maker/`): cut a model across and join the segments with print-in-place hook-and-loop (chain link) or ball-and-socket joints (manifold-3d), one joint per separate piece of each cross-section, notch for bend, colours / slots kept per part, laid on its side for printing. Ideas: test-print and tune default clearance, pick joint positions in the preview, other joint types (pin hinge), a thin-piece bridge instead of leaving it solid.
+
 ## Porting the QR tools from `invite2svg/`
 
 The Python/Streamlit tools in `invite2svg/` need a server, so they can't live on GitHub Pages. They are being
@@ -34,6 +37,6 @@ Remove each `invite2svg/` page once its replacement ships.
 ## Ideas
 - Image Prep: registration marks / alignment keys on the layers and the matching stamp bases, a hand-off to the QR keychain/stand banners, undo for mark strokes, batch processing of several pictures, and moving the heavy work into a Web Worker for very large images.
 - Stamp: print all colour layers as one multi-part 3MF with an alignment frame.
-- STL / 3MF modifier: load a mesh (Three.js `STLLoader` / `3MFLoader`), scale, add a text label or hanging hole, re-export.
+- STL / 3MF modifier, next steps: tougher repair (non-manifold edges, self-intersections, very large holes); reading Bambu's volume-range extruder layout (only the layout export3MF writes is read and tested).
 - Stamp: curved/circular text for round seals, multiple-colour 3MF (separate relief/base objects), saved presets.
 - Shop-owner extras: batch export (one STL per line of a CSV, zipped - `zipStore()` in `shared/js/export.js` is reusable).

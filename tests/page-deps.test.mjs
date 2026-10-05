@@ -19,6 +19,7 @@ function imports(src) {
   const out = [];
   for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;'"`]*?\bfrom\s*['"]([^'"]+)['"]/g)) out.push(m[1]);
   for (const m of src.matchAll(/(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g)) out.push(m[1]);
+  for (const m of src.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g)) out.push(m[1]);   // dynamic import('x'), e.g. the lazily loaded manifold-3d
   return out;
 }
 const covered = (spec, map) => spec in map || Object.keys(map).some(k => k.endsWith('/') && spec.startsWith(k));

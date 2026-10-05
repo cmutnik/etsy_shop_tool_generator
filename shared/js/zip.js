@@ -44,3 +44,46 @@ export function zipStore(files) {
   for (const c of all) { out.set(c, p); p += c.length; }
   return out;
 }
+
+async function inflateRaw(raw) {
+  const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));   // built into browsers and Node 18+
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/**
+ * Read a zip (stored or deflated entries; no zip64, no encryption). Returns { names, has(name), read(name) } where
+ * read() resolves to the entry's bytes. Entries are only decompressed when read.
+ */
+export function unzip(bytes) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 65535); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('This file is not a valid zip package.');
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  if (count === 0xffff || p === 0xffffffff) throw new Error('Zip64 packages are not supported.');
+  const dec = new TextDecoder(), entries = new Map();
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('The zip directory is damaged.');
+    const flags = dv.getUint16(p + 8, true), method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), commentLen = dv.getUint16(p + 32, true), local = dv.getUint32(p + 42, true);
+    const name = dec.decode(bytes.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name.endsWith('/')) continue;
+    entries.set(name, { flags, method, size, local });
+  }
+  return {
+    names: [...entries.keys()],
+    has: name => entries.has(name),
+    async read(name) {
+      const e = entries.get(name);
+      if (!e) throw new Error(`"${name}" is not in the package.`);
+      if (e.flags & 1) throw new Error('Encrypted packages are not supported.');
+      const start = e.local + 30 + dv.getUint16(e.local + 26, true) + dv.getUint16(e.local + 28, true);
+      const raw = bytes.subarray(start, start + e.size);
+      if (e.method === 0) return raw;
+      if (e.method === 8) return inflateRaw(raw);
+      throw new Error(`Unsupported zip compression (method ${e.method}).`);
+    },
+  };
+}
