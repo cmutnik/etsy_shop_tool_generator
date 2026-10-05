@@ -76,6 +76,36 @@ function compose(a, b) {                                                        
 }
 const det3 = m => m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
 
+/**
+ * The painted state of one triangle from a slicer's `paint_color` / `mmu_segmentation` string: the filament number painted on it, 0 for
+ * "not painted" (the part's own filament). The string is a subdivision tree the slicer wrote while painting (hex digits, read from the
+ * end; two bits say how many sides were split, two the state, state 3 continues in the next digit). The state covering most of the
+ * triangle wins, so colour borders follow the model's own triangles. Returns 0 for anything it cannot read.
+ */
+const paintCache = new Map();
+export function paintState(str) {
+  if (!str) return 0;
+  const hit = paintCache.get(str);
+  if (hit !== undefined) return hit;
+  let state = 0;
+  try {
+    let pos = str.length - 1;
+    const next = () => { const v = parseInt(str[pos--], 16); if (Number.isNaN(v)) throw new Error('bad digit'); return v; }, area = new Map();
+    const node = frac => {
+      const code = next(), sides = code & 3;
+      if (sides === 0) { let st = (code >> 2) & 3; if (st === 3) st = next() + 3; area.set(st, (area.get(st) || 0) + frac); return; }
+      for (let i = 0; i <= sides; i++) node(frac / (sides + 1));
+    };
+    node(1);
+    if (pos !== -1) throw new Error('trailing digits');
+    let best = 0, top = -1;
+    for (const [st, a] of area) if (a > top + 1e-12) { top = a; best = st; }
+    state = best;
+  } catch { state = 0; }
+  paintCache.set(str, state);
+  return state;
+}
+
 function readModel(text) {
   const root = parseXml(text), res = kid(root, 'resources');
   const out = { unit: UNIT_MM[root.getAttribute('unit') || 'millimeter'] ?? 1, objects: new Map(), colors: new Map(), build: [] };
@@ -89,10 +119,10 @@ function readModel(text) {
     const mesh = kid(o, 'mesh');
     if (mesh) {
       const vs = kids(kid(mesh, 'vertices') || mesh, 'vertex'), ts = kids(kid(mesh, 'triangles') || mesh, 'triangle');
-      const verts = new Float32Array(vs.length * 3), tris = new Uint32Array(ts.length * 3), tpid = new Array(ts.length), tp1 = new Array(ts.length);
+      const verts = new Float32Array(vs.length * 3), tris = new Uint32Array(ts.length * 3), tpid = new Array(ts.length), tp1 = new Array(ts.length), tpaint = new Array(ts.length);
       vs.forEach((v, i) => { verts[i * 3] = +v.getAttribute('x'); verts[i * 3 + 1] = +v.getAttribute('y'); verts[i * 3 + 2] = +v.getAttribute('z'); });
-      ts.forEach((t, i) => { tris[i * 3] = +t.getAttribute('v1'); tris[i * 3 + 1] = +t.getAttribute('v2'); tris[i * 3 + 2] = +t.getAttribute('v3'); tpid[i] = t.getAttribute('pid'); tp1[i] = t.getAttribute('p1'); });
-      obj.mesh = { verts, tris, tpid, tp1 };
+      ts.forEach((t, i) => { tris[i * 3] = +t.getAttribute('v1'); tris[i * 3 + 1] = +t.getAttribute('v2'); tris[i * 3 + 2] = +t.getAttribute('v3'); tpid[i] = t.getAttribute('pid'); tp1[i] = t.getAttribute('p1'); tpaint[i] = t.getAttribute('paint_color') || attr(t, 'mmu_segmentation'); });
+      obj.mesh = { verts, tris, tpid, tp1, tpaint };
     }
     const comps = kid(o, 'components');
     if (comps) obj.components = kids(comps, 'component').map(c => ({ id: c.getAttribute('objectid'), path: attr(c, 'path'), matrix: parseMatrix(c.getAttribute('transform')) }));
@@ -104,22 +134,34 @@ function readModel(text) {
 }
 
 /**
- * Filament slots from Metadata/model_settings.config (the layout export3MF writes, which Orca / Bambu / Prusa-family slicers use):
- * { byPart: Map(part id -> slot), byObject: Map(object id -> slot) }. Missing or unreadable config just means no slots.
+ * Filament slots from Metadata/model_settings.config (the layout export3MF writes, which Orca / Bambu / Prusa-family slicers use), and the
+ * filament colours from the project settings: { byPart, byObject: Map(id -> slot), palette: ['#RRGGBB', ...] (index = slot - 1) }.
+ * Slicers keep colour there, not in the model: an object only says "extruder 2", the project says what extruder 2 is loaded with.
+ * Missing or unreadable config just means no slots or no palette.
  */
 async function readSlots(zip, dec) {
-  const out = { byPart: new Map(), byObject: new Map() };
+  const out = { byPart: new Map(), byObject: new Map(), palette: [] };
   const name = 'Metadata/model_settings.config';
-  if (!zip.has(name)) return out;
+  if (zip.has(name)) {
+    try {
+      const root = parseXml(dec.decode(await zip.read(name)));
+      const slot = el => { const m = kids(el, 'metadata').find(k => k.getAttribute('key') === 'extruder'); const n = m ? parseInt(m.getAttribute('value'), 10) : NaN; return n >= 1 ? n : null; };
+      for (const o of kids(root, 'object')) {
+        const s = slot(o);
+        if (s) out.byObject.set(o.getAttribute('id'), s);
+        for (const p of kids(o, 'part')) { const ps = slot(p); if (ps) out.byPart.set(p.getAttribute('id'), ps); }
+      }
+    } catch { /* an unreadable config only loses the slots */ }
+  }
   try {
-    const root = parseXml(dec.decode(await zip.read(name)));
-    const slot = el => { const m = kids(el, 'metadata').find(k => k.getAttribute('key') === 'extruder'); const n = m ? parseInt(m.getAttribute('value'), 10) : NaN; return n >= 1 ? n : null; };
-    for (const o of kids(root, 'object')) {
-      const s = slot(o);
-      if (s) out.byObject.set(o.getAttribute('id'), s);
-      for (const p of kids(o, 'part')) { const ps = slot(p); if (ps) out.byPart.set(p.getAttribute('id'), ps); }
+    if (zip.has('Metadata/project_settings.config')) {                           // Bambu Studio / OrcaSlicer: JSON
+      const list = JSON.parse(dec.decode(await zip.read('Metadata/project_settings.config'))).filament_colour;
+      if (Array.isArray(list)) out.palette = list.map(c => hexColor(String(c)));
+    } else if (zip.has('Metadata/Slic3r_PE.config')) {                           // PrusaSlicer: "; filament_colour = #RRGGBB;#RRGGBB"
+      const m = dec.decode(await zip.read('Metadata/Slic3r_PE.config')).match(/filament_colour\s*=\s*([^\r\n]+)/);
+      if (m) out.palette = m[1].split(';').map(c => hexColor(c.trim().replace(/"/g, '')));
     }
-  } catch { /* an unreadable config only loses the slots */ }
+  } catch { /* no palette: parts keep their slot numbers but no colour */ }
   return out;
 }
 
@@ -153,18 +195,22 @@ export async function parse3MF(buffer) {
     if (obj.type === 'support' || obj.type === 'solidsupport') return;
     const name = obj.name || inheritedName || `Object ${id}`;
     if (obj.mesh) {
-      const { verts, tris, tpid, tp1 } = obj.mesh;
+      const { verts, tris, tpid, tp1, tpaint } = obj.mesh;
       triangles += tris.length / 3;
       if (triangles > MAX_TRIANGLES) throw new Error(`This model has more than ${MAX_TRIANGLES.toLocaleString()} triangles, which is too much for the browser.`);
       const colorOf = t => {
         const pid = tpid[t] ?? obj.pid, p = tpid[t] != null ? tp1[t] : (obj.pindex ?? tp1[t]);
         return pid != null && p != null ? (m.colors.get(pid)?.[+p] ?? null) : null;
       };
+      // a slicer's colour: the filament painted on the triangle, else the part's own filament (slot), looked up in the project's palette
+      const ownSlot = slots.byPart.get(id) ?? slots.byObject.get(parentId) ?? slots.byObject.get(id) ?? null;
+      const painted = tpaint.some(Boolean), slicerColours = painted || slots.palette.length > 0;
       const byColor = new Map();
       for (let t = 0; t < tris.length / 3; t++) {
-        const c = colorOf(t);
-        if (!byColor.has(c)) byColor.set(c, []);
-        byColor.get(c).push(t);
+        let key = colorOf(t);
+        if (key == null && slicerColours) key = '@' + ((painted && paintState(tpaint[t])) || ownSlot || 1);
+        if (!byColor.has(key)) byColor.set(key, []);
+        byColor.get(key).push(t);
       }
       const flip = det3(matrix) < 0, x = new Float32Array(verts.length);
       for (let i = 0; i < verts.length; i += 3) {
@@ -173,11 +219,15 @@ export async function parse3MF(buffer) {
         x[i + 1] = a * matrix[1] + b * matrix[4] + c * matrix[7] + matrix[10];
         x[i + 2] = a * matrix[2] + b * matrix[5] + c * matrix[8] + matrix[11];
       }
-      for (const [color, list] of byColor) {
+      const groupKey = `${file}#${id}#${parts.length}`;                           // the colour patches of one mesh share this, so they can be put back together
+      for (const [key, list] of byColor) {
         const idx = new Uint32Array(list.length * 3);
         list.forEach((t, k) => { idx[k * 3] = tris[t * 3]; idx[k * 3 + 1] = tris[t * 3 + (flip ? 2 : 1)]; idx[k * 3 + 2] = tris[t * 3 + (flip ? 1 : 2)]; });
-        const slot = byColor.size === 1 ? (slots.byPart.get(id) ?? slots.byObject.get(parentId) ?? slots.byObject.get(id)) : undefined;   // colour-split pieces keep separate slots
-        parts.push({ name: byColor.size > 1 && color ? `${name} (${color})` : name, color, positions: x, indices: idx, ...(slot ? { slot } : {}) });
+        const fromSlot = typeof key === 'string' && key[0] === '@' ? +key.slice(1) : null;
+        const color = fromSlot ? slots.palette[fromSlot - 1] ?? null : key;
+        const slot = fromSlot || (byColor.size === 1 ? ownSlot : null);        // colour-split pieces keep separate slots
+        const label = color || (fromSlot ? `filament ${fromSlot}` : null);
+        parts.push({ name: byColor.size > 1 && label ? `${name} (${label})` : name, color, positions: x, indices: idx, ...(slot ? { slot } : {}), group: groupKey });
       }
     }
     for (const c of obj.components) await instantiate(c.path || file, c.id, compose(c.matrix, matrix), obj.components.length === 1 ? name : '', depth + 1, id);
