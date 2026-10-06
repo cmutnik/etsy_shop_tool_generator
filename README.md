@@ -1,6 +1,8 @@
 <!-- Copyright (c) 2025 cmutnik -->
 # Etsy Shop Tool Generator
 
+[![Demo](https://img.shields.io/badge/Website-live-green)](https://cmutnik.github.io/etsy_shop_tool_generator/)
+
 Free, in-browser tools that help Etsy shop owners make products: QR code generators, stamp creators, STL/3MF modifiers and more.
 Everything runs client-side as a static site, so it can be hosted for free (GitHub Pages) and **nothing you upload leaves your browser**.
 
