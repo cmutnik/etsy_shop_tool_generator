@@ -2,17 +2,18 @@
 import * as THREE from 'three';
 import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
-import { parseMesh, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
-import { transformParts, buildGroup, partStats, boundsOfParts, flipPart, assignSlots, DEFAULT_COLOR } from '../mesh-modifier/geometry.js';
+import { readModelFiles, MAX_TRIANGLES } from '../../shared/js/mesh-import.js';
+import { transformParts, buildGroup, partsStats, analyseParts, boundsOfParts, assignSlots, DEFAULT_COLOR } from '../mesh-modifier/geometry.js';
 import { loadManifold } from '../mesh-modifier/boolean3d.js';
 import { makeFlexi, fromAxisFrame } from './flexi.js';
+import { simplifyParts, SOFT_LIMIT, HARD_LIMIT } from './prepare.js';
+import { repairParts } from '../mesh-modifier/repair-groups.js';
 import { cutPositions } from './joints.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
 const viewer = createViewer($('viewport'));
 const AXES = ['x', 'y', 'z'];
-const MAX_FLEXI_TRIANGLES = 150_000;
 
 let source = null;          // { name, fileName, parts, stats, include, colors, slots }
 let shown = null;           // { size, sizeObj } of what the preview shows
@@ -25,17 +26,20 @@ const showWarnings = list => $('warnings').replaceChildren(...list.map(t => Obje
 const round = (v, d = 1) => +v.toFixed(d);
 
 // ---------- loading ----------
-async function load(file) {
-  if (!file) return;
-  $('status').textContent = `Reading ${file.name}...`;
+let lastFiles = [];
+async function load(files) {
+  if (!files || !files.length) return;
+  lastFiles = [...files];
+  $('status').textContent = 'Reading the file...';
   try {
-    let parts = await parseMesh(file.name, await file.arrayBuffer());
-    let stats = parts.map(partStats);
-    const inside = stats.filter(x => x.volume < 0).length;                     // inside-out parts: faces point inwards
-    if (inside) { parts = parts.map((p, i) => (stats[i].volume < 0 ? flipPart(p) : p)); stats = parts.map(partStats); }
+    const { file, parts: read, notes, painted } = await readModelFiles(lastFiles, { colors: parseInt($('paintColors').value, 10) || 6 });
+    $('paintRow').hidden = !painted;
+    let parts = read;
+    const { parts: turned, stats } = analyseParts(parts);                      // inside-out solids are turned the right way round; colour patches are judged together
+    parts = turned;
     const tris = stats.reduce((s, x) => s + x.triangles, 0);
     if (tris > MAX_TRIANGLES) throw new Error('That model has too many triangles for the browser.');
-    source = { name: file.name.replace(/\.[^.]+$/, ''), fileName: file.name, parts, stats, include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null) };
+    source = { name: file.name.replace(/\.[^.]+$/, ''), fileName: file.name, notes, original: null, parts, stats, include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null) };
     for (const id of ['rotX', 'rotY', 'rotZ']) $(id).value = 0;
     $('scalePct').value = 100; $('unit').value = '1'; $('custom').value = '';
     buildPartList();
@@ -51,11 +55,12 @@ async function load(file) {
     showError(e.message || String(e));
   }
 }
-$('file').addEventListener('change', e => load(e.target.files[0]));
+$('file').addEventListener('change', e => load(e.target.files));
+$('paintColors').addEventListener('change', () => load(lastFiles));
 const drop = $('viewport');
 drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drop'); });
 drop.addEventListener('dragleave', () => drop.classList.remove('drop'));
-drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drop'); load(e.dataTransfer.files[0]); });
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drop'); load(e.dataTransfer.files); });
 
 function buildPartList() {
   $('partHint').hidden = false;
@@ -95,7 +100,7 @@ function invalidate() { result = null; pose = null; $('poseRow').hidden = true; 
 function draw() {
   if (!source) return;
   const used = usedParts();
-  $('barRow').hidden = $('joint').value === 'ball'; $('ballRow').hidden = $('gapRow').hidden = $('joint').value !== 'ball';
+  $('barRow').hidden = $('joint').value === 'ball'; $('ballRow').hidden = $('joint').value !== 'ball';
   $('make').disabled = busy || !used.length;
   if (!used.length) { showError('Keep at least one part ticked.'); return; }
   showError('');
@@ -120,10 +125,12 @@ function draw() {
   if (!framed) { framed = true; viewer.resize(); viewer.setView(view, shown.sizeObj); }
   const tris = used.reduce((s, p) => s + p.indices.length / 3, 0);
   $('info').textContent = `${round(w)} x ${round(d)} x ${round(h)} mm  |  ${tris.toLocaleString()} triangles  |  ${cuts.length + 1} segments  |  ${used.length} part${used.length === 1 ? '' : 's'}`;
-  const warnings = [];
-  const open = source.stats.reduce((s, x, i) => s + (source.include[i] ? x.openEdges : 0), 0);
-  if (open) warnings.push(`This model is not watertight (${open.toLocaleString()} open or shared edges), so it cannot be cut. Use "Repair open edges" in the STL / 3MF Modifier first.`);
-  if (tris > MAX_FLEXI_TRIANGLES) warnings.push(`This model has ${tris.toLocaleString()} triangles, which is too many for the joints to be built quickly (500,000 can take minutes and several GB). Simplify or decimate it first.`);
+  const warnings = [...(source.notes || [])];
+  const openParts = source.parts.map((p, i) => ({ name: p.name, edges: source.stats[i].openEdges, on: source.include[i] })).filter(x => x.on && x.edges > 0);
+  if (openParts.length) warnings.push(`Not watertight, so it cannot be cut: ${openParts.map(x => `${x.name} (${x.edges.toLocaleString()} open edges)`).join(', ')}. Use "Repair open edges" below, or untick the part.`);
+  if (tris > SOFT_LIMIT) warnings.push(`This model has ${tris.toLocaleString()} triangles${tris > HARD_LIMIT ? ', too many to cut in the browser' : ', which is slow to cut'}. Use "Reduce triangles" below.`);
+  $('fixBox').hidden = !(openParts.length || tris > SOFT_LIMIT || source.original);
+  $('undoFix').hidden = !source.original;
   const longest = Math.max(w, d, h);
   if (longest < 20) warnings.push(`The model is only ${round(longest)} mm across, which is small for joints. Scale it up, or check "The file's units".`);
   showWarnings(warnings);
@@ -131,11 +138,61 @@ function draw() {
 }
 $('controls').addEventListener('input', e => { if (!e.target.closest('#partList') && e.target.id !== 'file') refresh(); });
 
+// ---------- fix the model: repair, reduce ----------
+const snapshot = () => ({ parts: source.parts, stats: source.stats, include: source.include, colors: source.colors, slots: source.slots });
+const keepOriginal = () => { source.original ||= snapshot(); };
+/** Take a new parts list ({ part, from } entries) and carry each part's tick, colour and slot over from the part it came from. */
+function adopt(list) {
+  const { include, colors, slots } = source;
+  source.parts = list.map(x => x.part);
+  source.include = list.map(x => include[x.from]);
+  source.colors = list.map(x => colors[x.from]);
+  source.slots = list.map(x => slots[x.from]);
+  source.stats = partsStats(source.parts);
+  buildPartList();
+  source.include.forEach((on, i) => { document.querySelectorAll('#partList li')[i]?.classList.toggle('off', !on); const box = document.querySelectorAll('#partList li input[type=checkbox]')[i]; if (box) box.checked = on; });
+}
+const fixDone = lines => { $('fixReport').replaceChildren(...lines.map(t => Object.assign(document.createElement('div'), { textContent: t }))); framed = false; refresh(); };
+$('repair').addEventListener('click', () => {
+  if (!source) return;
+  const before = snapshot();
+  const { list, changed, log } = repairParts(source.parts, source.include);
+  if (changed) { source.original ||= before; adopt(list); }
+  if (!log.length) log.push('Nothing to repair.');
+  fixDone(log);
+});
+$('reduce').addEventListener('click', async () => {
+  if (!source || busy) return;
+  busy = true; $('reduce').disabled = $('make').disabled = true;
+  try {
+    if (!engineReady) { $('status').textContent = 'Loading the cutting engine (about 0.5 MB)...'; await loadManifold(); engineReady = true; }
+    $('status').textContent = 'Reducing triangles...';
+    await new Promise(r => setTimeout(r, 30));
+    const unitScale = num('unit') * ((num('scalePct') || 100) / 100);          // the limit is in mm, the file may not be
+    const before = snapshot();
+    const r = await simplifyParts(source.parts, { include: source.include, target: num('reduceTo') || 100000, maxDeviation: (num('maxDev') || Math.max(0.005, 0.0015 * Math.max(...(shown?.size || [1])))) / unitScale });
+    if (r.after !== r.before) { source.original ||= before; adopt(r.list); }
+    const lines = [r.after === r.before ? `Already ${r.before.toLocaleString()} triangles: nothing to reduce.` : `${r.before.toLocaleString()} -> ${r.after.toLocaleString()} triangles; the surface moved by at most ${round(r.deviation * unitScale, 2)} mm.`];
+    if (!r.reached) lines.push(`Could not get down to ${(num('reduceTo') || 100000).toLocaleString()} without moving the surface more than ${round(r.deviation * unitScale, 3)} mm. Allow a bigger move, or ask for more triangles.`);
+    if (r.open.length) lines.push(`Not reduced because they are not closed: ${r.open.join(', ')}. Repair them first.`);
+    fixDone(lines);
+  } catch (e) { showError(e.message || String(e)); }
+  finally { busy = false; $('reduce').disabled = false; $('status').textContent = source.fileName; draw(); }
+});
+$('undoFix').addEventListener('click', () => {
+  if (!source?.original) return;
+  Object.assign(source, source.original, { original: null });
+  buildPartList();
+  fixDone(['Fixes undone.']);
+});
+
 // ---------- make it flexi ----------
 $('make').addEventListener('click', async () => {
   if (!source || busy) return;
   clearTimeout(timer); draw();
   const used = usedParts();
+  const triangles = used.reduce((n, p) => n + p.indices.length / 3, 0);
+  if (triangles > HARD_LIMIT) { showError(`This model has ${triangles.toLocaleString()} triangles, too many to cut in the browser. Use "Reduce triangles" first.`); return; }
   busy = true; $('make').disabled = true;
   try {
     if (!engineReady) { $('status').textContent = 'Loading the cutting engine (about 0.5 MB)...'; await loadManifold(); engineReady = true; }
@@ -145,7 +202,7 @@ $('make').addEventListener('click', async () => {
     const axis = $('axis').value, k = AXES.indexOf(axis), lo = xf.min[k];
     const flexi = await makeFlexi(xf.parts, {
       axis, count: num('count'), positions: customList().length ? customList().map(v => lo + v) : null,
-      joint: $('joint').value, ball: num('ball') || 0, bar: num('bar') || 0, bend: num('bend') || 0, clearance: num('clearance'), gap: num('gap'),
+      joint: $('joint').value, ball: num('ball') || 0, bar: num('bar') || 0, bend: num('bend') || 0, clearance: num('clearance'),
     });
     let parts = flexi.parts;
     const turn = $('onSide').checked && axis === 'z';

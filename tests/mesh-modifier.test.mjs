@@ -144,7 +144,7 @@ test('3MF: units, build transforms, components and per-triangle colours', async 
 test('3MF: errors are readable', async () => {
   await assert.rejects(parse3MF(Uint8Array.from([1, 2, 3])), /zip/);
   await assert.rejects(parse3MF(zipStore([['x.txt', 'hi']])), /no model/);
-  await assert.rejects(parseMesh('thing.obj', new ArrayBuffer(0)), /\.stl or \.3mf/);
+  await assert.rejects(parseMesh("thing.ply", new ArrayBuffer(0)), /\.stl, \.3mf or \.obj/);
 });
 
 // ---------- hanging tab ----------
@@ -498,4 +498,171 @@ test('hole: a hole along x really is along x (the pocket is visible only from th
   const holeAt = x => Array.from(p.positions).some((v, i) => i % 3 === 0 && Math.abs(v - x) < 0.01);   // vertices at that x: only the hole's floor can be there
   assert.ok(holeAt(14), 'the hole ends at x = 14 (20 - 6): its floor is there');
   assert.ok(!holeAt(10), 'nothing was cut at x = 10');
+});
+
+test('3MF from a slicer: colours come from the project palette and the extruders, paint strings split a mesh by filament', async () => {
+  // a tetrahedron-ish mesh of 4 triangles: 2 painted with filament 1 ("4"), one with filament 3 ("0C"), one unpainted (the object's extruder 2)
+  const model = `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources>
+<object id="1" type="model"><mesh><vertices><vertex x="0" y="0" z="0"/><vertex x="10" y="0" z="0"/><vertex x="0" y="10" z="0"/><vertex x="0" y="0" z="10"/></vertices>
+<triangles><triangle v1="0" v2="2" v3="1" paint_color="4"/><triangle v1="0" v2="1" v3="3" paint_color="4"/><triangle v1="1" v2="2" v3="3" paint_color="0C"/><triangle v1="2" v2="0" v3="3"/></triangles></mesh></object>
+<object id="2" type="model"><mesh><vertices><vertex x="20" y="0" z="0"/><vertex x="30" y="0" z="0"/><vertex x="20" y="10" z="0"/><vertex x="20" y="0" z="10"/></vertices>
+<triangles><triangle v1="0" v2="2" v3="1"/><triangle v1="0" v2="1" v3="3"/><triangle v1="1" v2="2" v3="3"/><triangle v1="2" v2="0" v3="3"/></triangles></mesh></object>
+</resources><build><item objectid="1"/><item objectid="2"/></build></model>`;
+  const settings = '<?xml version="1.0"?><config><object id="1"><metadata key="extruder" value="2"/></object><object id="2"><metadata key="extruder" value="4"/></object></config>';
+  const project = JSON.stringify({ filament_colour: ['#111111', '#22AA22', '#3333FF', '#FF8800'] });
+  const zip = zipStore([['[Content_Types].xml', '<Types/>'], ['3D/3dmodel.model', model], ['Metadata/model_settings.config', settings], ['Metadata/project_settings.config', project]]);
+  const parts = await parse3MF(zip);
+  const by = Object.fromEntries(parts.map(p => [p.slot + ':' + p.color, p.indices.length / 3]));
+  assert.equal(by['1:#111111'], 2, 'two triangles painted with filament 1');
+  assert.equal(by['3:#3333FF'], 1, 'one painted with filament 3, from the two-digit state "0C"');
+  assert.equal(by['2:#22AA22'], 1, 'the unpainted one takes the object\'s extruder 2');
+  assert.equal(by['4:#FF8800'], 4, 'an unpainted object takes its own extruder 4 and the palette colour');
+  assert.equal(new Set(parts.filter(p => p.slot !== 4).map(p => p.group)).size, 1, 'the colour patches of one mesh share a group');
+});
+
+// ---------- repair works at any scale ----------
+test('repair: the merge distance follows the model size, so a model one unit across is not collapsed', () => {
+  const small = { ...box(0, 0, 0, 0.98, 0.76, 0.56), name: 'unit-size' };                      // like an AI-generated model normalised to ~1 unit
+  const soup = soupOf(small), p = soupToPart(soup);                                              // the same box with every triangle on its own corners
+  const r = repairPart(p);
+  assert.equal(r.report.closed, true, describeRepair('unit-size', r.report));
+  assert.equal(r.report.removedTriangles, 0, 'nothing is thrown away');
+  near(partStats(r.part).volume, 0.98 * 0.76 * 0.56, 'volume kept');
+  assert.ok(r.report.tolerance < 1e-4, `merge distance ${r.report.tolerance} is tiny for a model this size`);
+  // two small features 0.005 apart on a unit-size model stay separate (a fixed 0.01 would have fused them)
+  const sphere = weldSoup(Array.from(new THREE.SphereGeometry(0.5, 40, 28).toNonIndexed().attributes.position.array), 'ball');
+  const hole = repairPart(dropTriangles(sphere, [300, 301, 302, 303]));
+  assert.equal(hole.report.closed, true, describeRepair('ball', hole.report));
+  assert.equal(hole.report.removedTriangles, 0);
+});
+
+test('repair: a large model is not rejected by its own size, and the tolerance can still be given explicitly', () => {
+  const big = soupToPart(soupOf(box(0, 0, 0, 900, 600, 400)));
+  const r = repairPart(big);
+  assert.equal(r.report.closed, true); near(partStats(r.part).volume, 900 * 600 * 400, 'volume');
+  assert.equal(repairPart(big, { tolerance: 0.5 }).report.tolerance, 0.5);
+});
+
+// ---------- surfaces that touch along an edge ----------
+const stitch = (...parts) => {
+  const n = parts.reduce((s, p) => s + p.positions.length, 0), positions = new Float32Array(n), indices = [];
+  let off = 0;
+  for (const p of parts) { positions.set(p.positions, off); for (const i of p.indices) indices.push(i + off / 3); off += p.positions.length; }
+  return { name: 'touching', color: null, positions, indices: Uint32Array.from(indices) };
+};
+
+test('repair: two solids that touch along one edge (four triangles on it) are pulled apart and become closed', () => {
+  const both = stitch(box(0, 0, 0, 1, 1, 1), box(1, 1, 0, 2, 2, 1));                // they share only the vertical edge x = 1, y = 1
+  assert.ok(partStats(both).openEdges > 0, 'the shared edge has four triangles');
+  const r = repairPart(both);
+  assert.equal(r.report.closed, true, describeRepair('touching', r.report));
+  assert.equal(r.report.separatedPoints, 2, 'one new copy at each end of the edge');
+  within(partStats(r.part).volume, 2, 0.01, 'volume: the two cubes, minus a sliver where the nudge pulled the corners in');
+  assert.match(describeRepair('touching', r.report), /pulled apart 2 points/);
+});
+
+test('repair: a model that is already fine is not touched by the pinch step', () => {
+  const r = repairPart(box(0, 0, 0, 10, 10, 10));
+  assert.equal(r.report.separatedPoints, 0);
+  assert.equal(r.report.closed, true);
+  // two cones meeting only at a point have no shared edge: their vertex is left alone
+  const cone = (z0, up) => { const a = [0, 0, 0], ring = Array.from({ length: 8 }, (_, k) => [Math.cos(k * Math.PI / 4), Math.sin(k * Math.PI / 4), z0]);
+    const pos = [...a.map((v, i) => (i === 2 ? 0 : v)), ...ring.flat()], idx = [];
+    for (let k = 0; k < 8; k++) { const p = 1 + k, q = 1 + (k + 1) % 8; idx.push(...(up ? [0, p, q] : [0, q, p])); }
+    const c = []; for (let k = 1; k < 7; k++) c.push(...(up ? [1, 1 + k + 1, 1 + k] : [1, 1 + k, 1 + k + 1]));
+    return { name: 'cone', color: null, positions: Float32Array.from(pos), indices: Uint32Array.from([...idx, ...c]) }; };
+  const tips = repairPart(stitch(cone(-1, true), cone(1, false)));
+  assert.equal(tips.report.separatedPoints, 0, 'a point-to-point touch has no bad edge, so nothing is split');
+});
+
+// ---------- compressed 3MF ----------
+const { zipDeflate } = await import('../shared/js/zip.js');
+const { export3MFCompressed } = await import('../shared/js/export.js');
+const { execFileSync } = await import('node:child_process');
+const fsMod = await import('node:fs'), osMod = await import('node:os'), pathMod = await import('node:path');
+
+test('zipDeflate: big entries are deflated, small ones stored, and the round trip is exact', async () => {
+  const big = 'vertex 1.2345 6.789 0.5\n'.repeat(5000), tinyBytes = Uint8Array.from([1, 2, 3]);
+  const zip = await zipDeflate([['big.txt', big], ['tiny.bin', tinyBytes], ['é/unicode.txt', 'ünï']]);
+  assert.ok(zip.length < big.length / 5, `deflated: ${zip.length} bytes for ${big.length}`);
+  const r = unzip(zip);
+  assert.equal(new TextDecoder().decode(await r.read('big.txt')), big);
+  assert.deepEqual([...await r.read('tiny.bin')], [1, 2, 3]);
+  assert.equal(new TextDecoder().decode(await r.read('é/unicode.txt')), 'ünï');
+});
+
+test('3MF: the compressed export is much smaller, reads back identically, and the system unzip accepts it', async () => {
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(10, 96, 64).toNonIndexed()); sphere.name = 'ball';
+  const { group, parts: meta } = buildGroup([weldSoup(Array.from(sphere.geometry.attributes.position.array), 'Ball')]);
+  const plain = export3MF(group, { title: 'ball', parts: meta }), packed = await export3MFCompressed(group, { title: 'ball', parts: meta });
+  assert.ok(packed.size < plain.size / 3, `${packed.size} vs ${plain.size} bytes`);
+  const a = await parse3MF(await plain.arrayBuffer()), b = await parse3MF(await packed.arrayBuffer());
+  assert.equal(a.length, b.length);
+  assert.deepEqual(Array.from(b[0].positions), Array.from(a[0].positions)); assert.deepEqual(Array.from(b[0].indices), Array.from(a[0].indices));
+  const file = pathMod.join(osMod.tmpdir(), `packed-${process.pid}.3mf`);
+  fsMod.writeFileSync(file, Buffer.from(await packed.arrayBuffer()));
+  try { assert.match(execFileSync('unzip', ['-t', file], { encoding: 'utf8' }), /No errors detected/); }
+  catch (e) { if (e.code !== 'ENOENT') throw e; }                              // no system unzip here: the round trip above already proved it
+  finally { fsMod.unlinkSync(file); }
+});
+
+// ---------- a slicer-project 3MF (the layout Bambu Studio writes) ----------
+test('3MF from Bambu Studio: objects in separate files, names and slots from model_settings.config, transforms with scale and rotation', async () => {
+  const cube = box(0, 0, 0, 10, 10, 10), vxml = Array.from({ length: 8 }, (_, i) => `<vertex x="${cube.positions[i * 3]}" y="${cube.positions[i * 3 + 1]}" z="${cube.positions[i * 3 + 2]}"/>`).join('');
+  const txml = Array.from({ length: 12 }, (_, t) => `<triangle v1="${cube.indices[t * 3]}" v2="${cube.indices[t * 3 + 1]}" v3="${cube.indices[t * 3 + 2]}"/>`).join('');
+  const objectFile = id => `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="${id}" type="model"><mesh><vertices>${vxml}</vertices><triangles>${txml}</triangles></mesh></object></resources><build/></model>`;
+  const root = `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p"><resources>
+    <object id="2" type="model"><components><component p:path="/3D/Objects/a.model" objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components></object>
+    <object id="4" type="model"><components><component p:path="/3D/Objects/b.model" objectid="3" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components></object></resources>
+    <build><item objectid="2" transform="1 0 0 0 1 0 0 0 1 135.5 136 0.4"/><item objectid="4" transform="0 3 0 -3 0 0 0 0 3 75 139 38"/></build></model>`;
+  const rels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>';
+  const cfg = `<config><object id="2"><metadata key="name" value="Base plate.obj"/><metadata key="extruder" value="0"/><part id="1" subtype="normal_part"><metadata key="name" value="Base plate.obj"/></part></object>
+    <object id="4"><metadata key="name" value="Lid"/><metadata key="extruder" value="2"/><part id="3" subtype="normal_part"><metadata key="name" value="Lid"/></part></object></config>`;
+  const parts = await parse3MF(zipStore([['_rels/.rels', rels], ['3D/3dmodel.model', root], ['3D/Objects/a.model', objectFile(1)], ['3D/Objects/b.model', objectFile(3)], ['Metadata/model_settings.config', cfg]]));
+  assert.deepEqual(parts.map(p => p.name), ['Base plate.obj', 'Lid'], 'names come from the slicer config, not "Object 2"');
+  assert.equal(parts[1].slot, 2, 'object-level extruder 2'); assert.equal(parts[0].slot, undefined, 'extruder 0 means "default", not slot 0');
+  const lid = bounds(parts[1]);                                                  // 10 mm cube, turned 90 degrees and scaled x3: 30 mm, placed at (75, 139, 38)
+  near(lid.size?.[0] ?? lid.max[0] - lid.min[0], 30, 'scaled x3'); near(lid.min[2], 38, 'z from the build transform'); near(lid.min[0], 75 - 30, 'x: rotated 90 degrees about z, so it extends to -x');
+  near(bounds(parts[0]).min[0], 135.5, 'plain translation');
+});
+
+// ---------- keeping a slicer project's print settings ----------
+const { patchProjectSettings, describeProject } = await import('../tools/mesh-modifier/project.js');
+const projectJson = JSON.stringify({ printer_settings_id: 'Snapmaker U1 (0.4 nozzle)', print_settings_id: '0.20 Standard (0.4 nozzle) - mine', layer_height: '0.2', filament_colour: ['#996633', '#F26722', '#FB0207', '#000000'], unrelated: { keep: ['me'] } }, null, 4);
+
+test('project settings: only the filament colours that changed are rewritten, the rest is kept', () => {
+  const same = patchProjectSettings(projectJson, new Map([[1, '#996633'], [2, '#f26722']]));
+  assert.equal(same.text, projectJson, 'nothing changed, so the text is returned untouched'); assert.deepEqual(same.changed, []);
+  const r = patchProjectSettings(projectJson, new Map([[2, '#00aa00'], [4, '#111111'], [9, '#ffffff']]));
+  const j = JSON.parse(r.text);
+  assert.deepEqual(j.filament_colour, ['#996633', '#00AA00', '#FB0207', '#111111']);
+  assert.deepEqual(r.changed, [2, 4]); assert.deepEqual(r.beyond, [9], 'slot 9 has no filament in a 4-filament project');
+  assert.deepEqual({ ...j, filament_colour: 0 }, { ...JSON.parse(projectJson), filament_colour: 0 }, 'every other setting is identical');
+  assert.deepEqual(patchProjectSettings('not json', new Map([[1, '#ffffff']])).changed, []);
+  assert.deepEqual(describeProject(projectJson), { printer: 'Snapmaker U1 (0.4 nozzle)', print: '0.20 Standard (0.4 nozzle) - mine', filaments: 4 });
+});
+
+test('project settings: an opened slicer project is remembered and written back byte for byte, with the options asked for', async () => {
+  const cube = box(0, 0, 0, 10, 10, 10), vxml = Array.from({ length: 8 }, (_, i) => `<vertex x="${cube.positions[i * 3]}" y="${cube.positions[i * 3 + 1]}" z="${cube.positions[i * 3 + 2]}"/>`).join('');
+  const txml = Array.from({ length: 12 }, (_, t) => `<triangle v1="${cube.indices[t * 3]}" v2="${cube.indices[t * 3 + 1]}" v3="${cube.indices[t * 3 + 2]}"/>`).join('');
+  const model = `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Application">BambuStudio-2.3.5</metadata><metadata name="BambuStudio:3mfVersion">1</metadata><resources><object id="1" type="model"><mesh><vertices>${vxml}</vertices><triangles>${txml}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
+  const filament = '{"filament_type":["PLA"]}';
+  const original = zipStore([['3D/3dmodel.model', model], ['Metadata/project_settings.config', projectJson], ['Metadata/filament_settings_1.config', filament], ['Metadata/plate_1.png', Uint8Array.from([137, 80, 78, 71])]]);
+  const parts = await parse3MF(original);
+  assert.equal(parts.project.application, 'BambuStudio-2.3.5'); assert.equal(parts.project.version, '1');
+  assert.deepEqual(parts.project.files.map(f => f[0]).sort(), ['Metadata/filament_settings_1.config', 'Metadata/project_settings.config'], 'profiles only, not thumbnails');
+  assert.equal(new TextDecoder().decode(parts.project.files.find(f => f[0].endsWith('project_settings.config'))[1]), projectJson);
+  assert.equal((await parse3MF(zipStore([['3D/3dmodel.model', model.replace(/<metadata[^>]*>[^<]*<\/metadata>/g, '')]]))).project, undefined, 'a plain 3MF has no project');
+
+  const { group, parts: meta } = buildGroup(parts);
+  const text = async blob => { const z = unzip(new Uint8Array(await blob.arrayBuffer())); return { z, model: new TextDecoder().decode(await z.read('3D/3dmodel.model')) }; };
+  const plain = await text(await export3MFCompressed(group, { title: 't' }));
+  assert.ok(!plain.z.has('Metadata/project_settings.config')); assert.match(plain.model, /Application">Etsy Shop Tools</);
+  const files = await text(await export3MFCompressed(group, { title: 't', extraFiles: parts.project.files }));
+  assert.equal(new TextDecoder().decode(await files.z.read('Metadata/project_settings.config')), projectJson, 'copied through unchanged');
+  assert.equal(new TextDecoder().decode(await files.z.read('Metadata/filament_settings_1.config')), filament);
+  assert.match(files.model, /Application">Etsy Shop Tools</, 'file-only mode still says what wrote it');
+  const marked = await text(await export3MFCompressed(group, { title: 't', parts: meta, extraFiles: parts.project.files, application: parts.project.application, extraMetadata: { 'BambuStudio:3mfVersion': parts.project.version } }));
+  assert.match(marked.model, /Application">BambuStudio-2\.3\.5</); assert.match(marked.model, /BambuStudio:3mfVersion">1</);
+  assert.equal((await parse3MF(await (await export3MFCompressed(group, { title: 't', extraFiles: parts.project.files })).arrayBuffer())).length, 1, 'and it still reads back as a model');
 });

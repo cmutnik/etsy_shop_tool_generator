@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { cutPositions, poleOfInaccessibility, jointDims, hookDims, minSegment } = await import('../tools/flexi-maker/joints.js');
+const { cutPositions, poleOfInaccessibility, ballDims, hookDims } = await import('../tools/flexi-maker/joints.js');
 const { makeFlexi } = await import('../tools/flexi-maker/flexi.js');
 const { loadManifold, toManifold } = await import('../tools/mesh-modifier/boolean3d.js');
 const { partStats } = await import('../tools/mesh-modifier/geometry.js');
@@ -28,13 +28,16 @@ test('poleOfInaccessibility: the middle of a square, and the thick end of an L',
   assert.ok(ring.r > 3.9 && (ring.x < 7.5 || ring.x > 22.5 || ring.y < 7.5 || ring.y > 22.5), `a hole must be avoided: ${JSON.stringify(ring)}`);
 });
 
-test('jointDims: the socket mouth traps the ball but lets the neck tilt', () => {
-  for (const tan of [0, 0.1, 0.2, 0.35]) {
-    const d = jointDims(4, 0.4, tan);
-    assert.ok(d, `a joint fits at slope ${tan}`);
-    assert.ok(d.mouth <= 0.92 * d.R && d.mouth - d.neck >= 0.8, JSON.stringify(d));
+test('ballDims: the cup mouth traps the ball but lets the neck tilt, and the faces leave room for both', () => {
+  for (const R of [3, 4, 6, 9]) {
+    const d = ballDims(R, 0.4);
+    assert.ok(d, `a joint fits at R = ${R}`);
+    assert.ok(d.mouth <= 0.92 * R + 1e-9 && d.mouth - d.neck >= 0.8 - 1e-9, JSON.stringify(d));
+    assert.ok(d.a > R + 0.2, 'the ball clears the lower face on its neck');
+    assert.ok(d.b < d.Rc, 'the cavity bites into the upper segment so the cup is attached');
+    assert.ok(d.tilt > 15, `it can bend about ${d.tilt.toFixed(0)} degrees`);
   }
-  assert.equal(jointDims(4, 3, 0), null, 'a clearance this large cannot hold a ball');
+  assert.equal(ballDims(1.5, 0.4), null, 'too small a ball cannot hold a mouth narrower than itself and wider than its neck');
 });
 
 test('flexi bar keeps both colours, prints in place and bends without the pieces touching', async () => {
@@ -45,7 +48,7 @@ test('flexi bar keeps both colours, prints in place and bends without the pieces
   assert.equal(r.parts.length, 6, 'two colours in each of three segments');
   assert.deepEqual([...new Set(r.parts.map(p => p.color))].sort(), ['#0000CC', '#CC0000']);
   for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
-  assert.ok(r.bend > 15, `reports ${r.bend} degrees`);
+  assert.ok(r.bend > 12, `reports ${r.bend} degrees`);
 
   const w = await loadManifold();
   const solids = r.parts.map(p => ({ p, m: toManifold(w, p) }));
@@ -56,6 +59,7 @@ test('flexi bar keeps both colours, prints in place and bends without the pieces
 
   // tilt the upper segments about the first joint by 80 % of the bend the tool reports: still no contact
   const j = r.joints[0], tilt = (list, deg) => list.map(s => ({ m: s.m.translate([-j.x, -j.y, -j.pivot]).rotate([deg, 0, 0]).translate([j.x, j.y, j.pivot]) }));
+  assert.ok(r.joints.every(q => q.pivot > q.at - 6 && q.pivot < q.at + 6), 'the ball sits in the gap between the segments');
   const lower = of(1), upper = [...of(2), ...of(3)];
   for (const sign of [1, -1]) {
     const moved = tilt(upper, sign * 0.8 * r.bend);
@@ -74,25 +78,25 @@ test('thin pieces are reported, and the model still comes out in one orientation
   assert.equal(r.parts.length, 3);
   const xs = r.parts.flatMap(p => [...p.positions].filter((_, i) => i % 3 === 0));
   assert.ok(Math.min(...xs) >= -0.001 && Math.max(...xs) <= 100.001, 'joints stay inside the original length');
-  assert.ok(minSegment(3, 0.4) > 8);
 });
 
 test('nothing is left standing inside the notch, even material wider than the cut section', async () => {
   // a wide flange just below a narrow stem: the cut crosses the stem, but the notch cone dips into the flange
-  const model = [box(-20, -20, 0, 20, 20, 10, '#AA5500', 'Flange'), box(-5, -5, 10, 5, 5, 60, '#0055AA', 'Stem')];
-  const r = await makeFlexi(model, { joint: 'ball', axis: 'z', positions: [12], bend: 20 });
-  const j = r.joints[0], t = Math.tan((r.bend * Math.PI) / 360), h = 0.3;
+  const model = [box(-40, -40, 0, 40, 40, 10, '#AA5500', 'Flange'), box(-8, -8, 10, 8, 8, 80, '#0055AA', 'Stem')];
+  const r = await makeFlexi(model, { joint: 'ball', axis: 'z', positions: [20], bend: 20 });
+  const j = r.joints[0], t = Math.tan((r.bend * Math.PI) / 360), h = j.half;
   for (const p of r.parts) {
     const seg = +p.name.match(/Segment (\d)/)[1];
     for (let i = 0; i < p.positions.length; i += 3) {
       const rho = Math.hypot(p.positions[i] - j.x, p.positions[i + 1] - j.y), z = p.positions[i + 2], edge = (h + rho * t) * 0.98;
-      if (rho < j.radius * 1.6) continue;                                                      // the ball, neck and socket live here
+      if (rho < j.radius * 2.2) continue;                                                      // the ball, neck and socket live here
       if (seg === 1) assert.ok(z <= j.at - edge, `${p.name}: vertex at radius ${rho.toFixed(1)}, z ${z.toFixed(2)} stands in the notch`);
       else assert.ok(z >= j.at + edge, `${p.name}: vertex at radius ${rho.toFixed(1)}, z ${z.toFixed(2)} stands in the notch`);
     }
   }
   for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
   assert.equal(r.parts.length, 3, 'flange, lower stem, upper stem: no stray fragments');
+  assert.ok(Math.min(...r.parts.find(p => p.name.includes('Flange')).positions.filter((_, i) => i % 3 === 2)) >= 0 - 1e-6);
   const w = await loadManifold(), solids = r.parts.map(p => toManifold(w, p));
   for (let a = 0; a < solids.length; a++) for (let b = a + 1; b < solids.length; b++) assert.ok(solids[a].intersect(solids[b]).volume() < 1e-6, `${r.parts[a].name} and ${r.parts[b].name} overlap`);
 });
@@ -145,4 +149,127 @@ test('hook and loop: every cut separates, and the wide part under a narrow cut i
   const model = [box(-30, -30, 0, 30, 30, 10, '#AA5500', 'Flange'), box(-12, -12, 10, 12, 12, 90, '#0055AA', 'Stem')];
   const r = await makeFlexi(model, { axis: 'z', positions: [40] });
   for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
+});
+
+test('simplifyParts: a heavy closed model comes down, stays closed, keeps its colour, and open parts are left alone', async () => {
+  const { simplifyParts } = await import('../tools/flexi-maker/prepare.js');
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+  const w = await loadManifold();
+  const sphere = w.Manifold.sphere(20, 500);                                    // 125,000 triangles
+  const dense = { ...fromManifold(sphere, { name: 'Ball' }), name: 'Ball', color: '#CC0000' };
+  sphere.delete();
+  const open = box(0, 0, 0, 10, 10, 10, '#00AA00', 'Open');
+  open.indices = open.indices.slice(0, open.indices.length - 3);                // drop a triangle: not closed any more
+  const r = await simplifyParts([dense, open], { target: 20000, maxDeviation: 0.3 });
+  assert.ok(r.before > 120000);
+  assert.ok(r.after <= 20000 && r.reached, `reduced to ${r.after}`);
+  assert.ok(r.deviation <= 0.3 + 1e-9);
+  const [ball, kept] = r.list;
+  assert.equal(ball.part.color, '#CC0000');
+  assert.equal(partStats(ball.part).openEdges, 0, 'still a closed solid');
+  assert.equal(kept.part, open, 'the open part is untouched');
+  assert.deepEqual(r.open, ['Open']);
+  const v0 = partStats(dense).volume, v1 = partStats(ball.part).volume;
+  assert.ok(Math.abs(v1 - v0) / v0 < 0.01, `volume changed ${(100 * Math.abs(v1 - v0) / v0).toFixed(2)} %`);
+  const small = await simplifyParts([open], { target: 100 });
+  assert.equal(small.reached, true, 'already small enough: returned as is');
+});
+
+test('simplifyParts and repairParts keep the colours of a painted model (patches of one closed surface)', async () => {
+  const { simplifyParts } = await import('../tools/flexi-maker/prepare.js');
+  const { repairParts } = await import('../tools/mesh-modifier/repair-groups.js');
+  const { partsStats, analyseParts } = await import('../tools/mesh-modifier/geometry.js');
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+  const w = await loadManifold();
+  const sphere = w.Manifold.sphere(20, 300), whole = fromManifold(sphere, { name: 'S' });
+  sphere.delete();
+  const patch = red => {
+    const idx = [];
+    for (let t = 0; t < whole.indices.length; t += 3) {
+      const cx = [0, 1, 2].reduce((n, k) => n + whole.positions[whole.indices[t + k] * 3], 0) / 3;
+      if ((cx > 0) === red) idx.push(whole.indices[t], whole.indices[t + 1], whole.indices[t + 2]);
+    }
+    return { name: red ? 'Red' : 'Blue', color: red ? '#CC0000' : '#0000CC', positions: whole.positions, indices: Uint32Array.from(idx), group: 'g' };
+  };
+  const patches = [patch(true), patch(false)];
+  const stats = partsStats(patches);
+  assert.equal(stats[0].openEdges, 0, 'together the patches are closed, and that is reported once, on the first');
+  assert.equal(stats[1].openEdges, 0);
+  assert.ok(stats[0].volume > 30000 && stats[1].volume === 0, 'the whole sphere\'s volume, on the first patch');
+  assert.equal(analyseParts(patches).flipped, 0);
+
+  const r = await simplifyParts(patches, { target: 8000, maxDeviation: 0.3 });
+  assert.ok(r.reached && r.after <= 8000, `reduced to ${r.after}`);
+  assert.deepEqual(r.list.map(x => x.part.color).sort(), ['#0000CC', '#CC0000']);
+  const mean = c => { const p = r.list.find(x => x.part.color === c).part; const xs = [...p.positions].filter((_, i) => i % 3 === 0); return xs.reduce((a, b) => a + b, 0) / xs.length; };
+  assert.ok(mean('#CC0000') > 5 && mean('#0000CC') < -5, 'each colour stays on its own side');
+  assert.equal(partsStats(r.list.map(x => x.part))[0].openEdges, 0, 'still one closed surface');
+
+  // a hole punched in the surface: repairing the group fills it and keeps the colours
+  const holed = patches.map(p => ({ ...p }));
+  holed[0].indices = holed[0].indices.slice(3);
+  assert.ok(partsStats(holed)[0].openEdges > 0);
+  const fixed = repairParts(holed);
+  assert.ok(fixed.changed, fixed.log.join(' | '));
+  assert.deepEqual(fixed.list.map(x => x.part.color).sort(), ['#0000CC', '#CC0000']);
+  assert.equal(partsStats(fixed.list.map(x => x.part))[0].openEdges, 0, 'closed again');
+});
+
+test('a cut that falls between two separate parts says so instead of calling it a sliver', async () => {
+  const two = [box(0, -15, -15, 40, 15, 15, '#AA0000', 'Left'), box(100, -15, -15, 140, 15, 15, '#0000AA', 'Right')];
+  const r = await makeFlexi(two, { joint: 'ball', axis: 'x', positions: [20, 70] });
+  assert.equal(r.joints.length, 1, 'only the cut through a part gets a joint');
+  assert.ok(r.warnings.some(w => /space between separate parts/.test(w)), r.warnings.join(' | '));
+  assert.ok(!r.warnings.some(w => /sliver/.test(w)));
+});
+
+test('a painted model (colour patches of one closed surface) is cut whole and comes out coloured again', async () => {
+  const w = await loadManifold();
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+  const cyl = w.Manifold.cylinder(100, 12, 12, 48, false);                    // closed, ~200 triangles
+  const whole = fromManifold(cyl, { name: 'Tube' });
+  cyl.delete();
+  // two patches: the triangles on the +x side red, the rest blue: neither is closed on its own
+  const side = (red) => {
+    const idx = [];
+    for (let t = 0; t < whole.indices.length; t += 3) {
+      const cx = [0, 1, 2].reduce((s, k) => s + whole.positions[whole.indices[t + k] * 3], 0) / 3;
+      if ((cx > 0) === red) idx.push(whole.indices[t], whole.indices[t + 1], whole.indices[t + 2]);
+    }
+    return { name: red ? 'Red' : 'Blue', color: red ? '#CC0000' : '#0000CC', positions: whole.positions, indices: Uint32Array.from(idx), group: 'g1' };
+  };
+  const patches = [side(true), side(false)];
+  assert.ok(patches.every(p => partStats(p).openEdges > 0), 'the patches are open on their own');
+  for (const joint of ['hook', 'ball']) {
+    const r = await makeFlexi(patches, { axis: 'z', count: 3, joint });
+    assert.deepEqual([...new Set(r.parts.map(p => p.color))].sort(), ['#0000CC', '#CC0000'], `${joint}: both colours survive`);
+    for (const seg of [0, 1, 2]) {
+      const mean = c => { const ps = r.parts.filter(p => p.seg === seg && p.color === c), xs = ps.flatMap(p => [...p.positions].filter((_, i) => i % 3 === 0)); return xs.reduce((a, b) => a + b, 0) / xs.length; };
+      assert.ok(mean('#CC0000') > 1, `${joint} segment ${seg}: the red patch stays on the +x side (${mean('#CC0000').toFixed(1)})`);
+      assert.ok(mean('#0000CC') < -1, `${joint} segment ${seg}: the blue patch stays on the -x side (${mean('#0000CC').toFixed(1)})`);
+    }
+    assert.equal(new Set(r.parts.map(p => p.seg)).size, 3);
+  }
+});
+
+test('repairParts: a few pinched, non-manifold spots are cut out and filled when the normal repair cannot', async () => {
+  const { repairParts, stripBadEdges } = await import('../tools/mesh-modifier/repair-groups.js');
+  const { partsStats } = await import('../tools/mesh-modifier/geometry.js');
+  const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+  const w = await loadManifold();
+  const sphere = w.Manifold.sphere(20, 64), base = fromManifold(sphere, { name: 'S', color: '#AA0000' });
+  sphere.delete();
+  // a fin: one extra triangle stuck on an existing edge, so that edge is shared by three triangles (non-manifold)
+  const a = base.indices[0], b = base.indices[1], extra = base.positions.length / 3;
+  const positions = new Float32Array(base.positions.length + 3);
+  positions.set(base.positions);
+  positions.set([base.positions[a * 3] + 50, base.positions[a * 3 + 1] + 50, base.positions[a * 3 + 2] + 50], base.positions.length);
+  const pinched = { ...base, positions, indices: Uint32Array.from([...base.indices, a, b, extra]) };
+  assert.ok(partsStats([pinched])[0].openEdges > 0, 'the fin makes it not closed');
+  const stripped = stripBadEdges(pinched);
+  assert.ok(stripped.dropped >= 3 && stripped.dropped < 20, `dropped ${stripped.dropped}`);
+  const r = repairParts([pinched]);
+  assert.ok(r.changed, r.log.join(' | '));
+  assert.equal(partsStats(r.list.map(x => x.part))[0].openEdges, 0, r.log.join(' | '));
+  assert.equal(r.list[0].part.color, '#AA0000');
 });

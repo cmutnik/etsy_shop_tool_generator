@@ -1,7 +1,7 @@
 <!-- Copyright (c) 2025 cmutnik -->
 # QR Code Keychain
 
-Live. Port of `invite2svg/pages/3_*QR_Code_Keychain.py` (+ `build_qr_plate_mesh`, `build_keychain_loop_mesh`).
+Live.
 
 - `geometry.js` - `buildKeychain(params)` -> `THREE.Group` + info. DOM-free, tested in `tests/qr-keychain.test.mjs`.
 - `loops.js` - the six loop styles (`LOOP_STYLES`, `loopFootprint()`): each is a 2D shape plus a neck, minus a hole, built with polygon booleans from `shared/js/boolean2d.js` and then extruded.

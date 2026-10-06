@@ -29,6 +29,66 @@ export function partStats(part) {
   return { triangles: idx.length / 3, volume, openEdges: open };
 }
 
+/**
+ * Parts that are patches of one surface (they share a `group`, as the colours of a painted model do) are not closed on their own but are
+ * together. This joins each such group into one part with `labels` (the member's number for every triangle), keeping its member list as
+ * `members`, and passes every other part through. Returns the new list.
+ */
+export function mergeGroups(parts) {
+  const groups = new Map(), out = [];
+  for (const p of parts) {
+    if (!p.group) { out.push(p); continue; }
+    if (!groups.has(p.group)) { const g = { members: [] }; groups.set(p.group, g); out.push(g); }
+    groups.get(p.group).members.push(p);
+  }
+  return out.map(g => {
+    if (!g.members) return g;
+    if (g.members.length === 1) return g.members[0];
+    const nv = g.members.reduce((n, m) => n + m.positions.length / 3, 0), nt = g.members.reduce((n, m) => n + m.indices.length / 3, 0);
+    const positions = new Float32Array(nv * 3), indices = new Uint32Array(nt * 3), labels = new Uint32Array(nt);
+    let v = 0, t = 0;
+    g.members.forEach((m, k) => {
+      positions.set(m.positions, v * 3);
+      for (let i = 0; i < m.indices.length; i++) indices[t * 3 + i] = m.indices[i] + v;
+      labels.fill(k, t, t + m.indices.length / 3);
+      v += m.positions.length / 3; t += m.indices.length / 3;
+    });
+    return { name: g.members[0].name, color: g.members[0].color, positions, indices, labels, members: g.members, group: g.members[0].group };
+  });
+}
+
+/**
+ * partStats for every part, treating colour patches of one surface (parts sharing a `group`) as the one solid they make together: a patch is
+ * never closed on its own. The group's volume and open edges are put on its first member (the others get 0, so sums stay right);
+ * every part keeps its own triangle count.
+ */
+export function partsStats(parts) {
+  const stats = new Array(parts.length), groups = new Map();
+  parts.forEach((p, i) => {
+    if (!p.group) { stats[i] = partStats(p); return; }
+    if (!groups.has(p.group)) groups.set(p.group, []);
+    groups.get(p.group).push(i);
+  });
+  for (const list of groups.values()) {
+    const whole = list.length === 1 ? partStats(parts[list[0]]) : partStats(mergeGroups(list.map(i => parts[i]))[0]);
+    list.forEach((i, k) => { stats[i] = { triangles: parts[i].indices.length / 3, volume: k === 0 ? whole.volume : 0, openEdges: k === 0 ? whole.openEdges : 0 }; });
+  }
+  return stats;
+}
+
+/** Turn inside-out solids the right way round (a group of colour patches is judged, and turned, as one). Returns { parts, stats, flipped }. */
+export function analyseParts(parts) {
+  let stats = partsStats(parts);
+  const turn = new Set(), firstOf = new Map();
+  parts.forEach((p, i) => { if (p.group && !firstOf.has(p.group)) firstOf.set(p.group, i); });
+  parts.forEach((p, i) => { const lead = p.group ? firstOf.get(p.group) : i; if (stats[lead].volume < 0) turn.add(i); });
+  if (!turn.size) return { parts, stats, flipped: 0 };
+  const flippedGroups = new Set([...turn].map(i => (parts[i].group ? parts[i].group : i)));
+  const out = parts.map((p, i) => (turn.has(i) ? flipPart(p) : p));
+  stats = partsStats(out);
+  return { parts: out, stats, flipped: flippedGroups.size };
+}
+
 export function boundsOfParts(parts) {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (const p of parts) for (let i = 0; i < p.positions.length; i += 3) for (let k = 0; k < 3; k++) {

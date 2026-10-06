@@ -21,7 +21,7 @@ shared/js/                  code used by more than one tool
   segmentation.js           seeded segmentation (random walker): subject mask from a few user-painted marks
   curves.js                 cubic Bezier fitting (Schneider) with corner detection, for smooth SVG output
   skeleton.js               centre-line tracing: thinning, spur pruning, skeleton -> paths -> stroke SVG
-  zip.js                    minimal zip writer and reader (stored / deflate via DecompressionStream; no dependencies); the writer is re-exported by export.js
+  zip.js                    minimal zip writer (`zipStore`, stored) and `zipDeflate` (async, deflated via CompressionStream) and reader (`unzip`, stored / deflate via DecompressionStream); no dependencies; the writers are re-exported by export.js (`export3MF` is synchronous and stored, `export3MFCompressed` is async and deflated)
   mesh-import.js            STL (binary / ASCII) and 3MF (parts, colours, units, transforms, components) -> plain parts; no dependencies (3MF needs a DOMParser)
   image-trace.js            raster -> groups: source (alpha/brightness), Otsu auto threshold, smoothing, marching squares
   raster-tools.js           distance transform + thin-feature detection (printability checks)
@@ -41,7 +41,6 @@ tools/
   wedding-invite-3d/        planned - README only, see docs/ROADMAP.md
 tests/                      node --test; geometry, import, export (npm test)
 docs/                       this file + roadmap
-invite2svg/                 legacy Python/Streamlit app, being ported (see roadmap); untouched
 ```
 
 **One exception to `+esm`:** `manifold-3d` is imported from its plain `manifold.js` file (`https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/manifold.js`), not `+esm`, because it finds `manifold.wasm` next to itself through `import.meta.url`, which a bundled copy would lose. It has no bare imports. It is loaded with a dynamic `import()` only when a cut is used, and `tests/page-deps.test.mjs` follows dynamic imports.
