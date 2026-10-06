@@ -30,8 +30,9 @@
   {
     "id": "wedding-invite-3d",
     "title": "3D Wedding Invite",
-    "description": "Turn an invitation photo or SVG into a layered 3D print.",
-    "status": "planned"
+    "description": "Turn an invitation photo or SVG into a layered 3D print. Opens the invite2svg app (separate site).",
+    "status": "live",
+    "url": "https://invite2svg.streamlit.app/"
   },
   {
     "id": "mesh-modifier",
