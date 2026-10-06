@@ -109,7 +109,8 @@ export function paintState(str) {
 
 function readModel(text) {
   const root = parseXml(text), res = kid(root, 'resources');
-  const out = { unit: UNIT_MM[root.getAttribute('unit') || 'millimeter'] ?? 1, objects: new Map(), colors: new Map(), build: [] };
+  const out = { unit: UNIT_MM[root.getAttribute('unit') || 'millimeter'] ?? 1, objects: new Map(), colors: new Map(), build: [], meta: {} };
+  for (const m of kids(root, 'metadata')) out.meta[m.getAttribute('name')] = m.textContent;
   if (!res) return out;
   for (const g of [...kids(res, 'basematerials'), ...kids(res, 'colorgroup')]) {
     const list = kids(g, g.localName === 'basematerials' ? 'base' : 'color').map(c => hexColor(c.getAttribute('displaycolor') || c.getAttribute('color')));
@@ -136,21 +137,28 @@ function readModel(text) {
 
 /**
  * Filament slots from Metadata/model_settings.config (the layout export3MF writes, which Orca / Bambu / Prusa-family slicers use), and the
- * filament colours from the project settings: { byPart, byObject: Map(id -> slot), palette: ['#RRGGBB', ...] (index = slot - 1) }.
+ * filament colours from the project settings: { byPart, byObject: Map(id -> slot), palette: ['#RRGGBB', ...] (index = slot - 1),
+ * names: { byPart, byObject: Map(id -> the name the slicer shows) } }. Bambu Studio leaves the model file's objects unnamed and keeps the names here.
  * Slicers keep colour there, not in the model: an object only says "extruder 2", the project says what extruder 2 is loaded with.
  * Missing or unreadable config just means no slots or no palette.
  */
 async function readSlots(zip, dec) {
-  const out = { byPart: new Map(), byObject: new Map(), palette: [] };
+  const out = { byPart: new Map(), byObject: new Map(), palette: [], names: { byPart: new Map(), byObject: new Map() } };
   const name = 'Metadata/model_settings.config';
   if (zip.has(name)) {
     try {
       const root = parseXml(dec.decode(await zip.read(name)));
       const slot = el => { const m = kids(el, 'metadata').find(k => k.getAttribute('key') === 'extruder'); const n = m ? parseInt(m.getAttribute('value'), 10) : NaN; return n >= 1 ? n : null; };
+      const nameOf = el => (kids(el, 'metadata').find(k => k.getAttribute('key') === 'name')?.getAttribute('value') || '').trim();
       for (const o of kids(root, 'object')) {
-        const s = slot(o);
-        if (s) out.byObject.set(o.getAttribute('id'), s);
-        for (const p of kids(o, 'part')) { const ps = slot(p); if (ps) out.byPart.set(p.getAttribute('id'), ps); }
+        const s = slot(o), id = o.getAttribute('id');
+        if (s) out.byObject.set(id, s);
+        if (nameOf(o)) out.names.byObject.set(id, nameOf(o));
+        for (const p of kids(o, 'part')) {
+          const ps = slot(p), pid = p.getAttribute('id');
+          if (ps) out.byPart.set(pid, ps);
+          if (nameOf(p)) out.names.byPart.set(pid, nameOf(p));
+        }
       }
     } catch { /* an unreadable config only loses the slots */ }
   }
@@ -164,6 +172,18 @@ async function readSlots(zip, dec) {
     }
   } catch { /* no palette: parts keep their slot numbers but no colour */ }
   return out;
+}
+
+/**
+ * A slicer project's print settings, to carry over when saving: { application, version, files: [[name, bytes]] } for the
+ * Metadata/*.config files that hold the print / filament / printer profiles (Bambu Studio, OrcaSlicer), or null if there are none.
+ */
+async function readProject(zip, meta) {
+  const names = zip.names.filter(n => /^Metadata\/(project_settings|(filament|process|machine)_settings_\d+)\.config$/.test(n));
+  if (!names.includes('Metadata/project_settings.config')) return null;
+  const files = [];
+  for (const n of names) files.push([n, await zip.read(n)]);
+  return { application: meta.Application || '', version: meta['BambuStudio:3mfVersion'] || null, files };
 }
 
 /** 3MF -> parts (async: the package is deflated). */
@@ -194,7 +214,7 @@ export async function parse3MF(buffer) {
     const m = await model(file), obj = m.objects.get(id);
     if (!obj) throw new Error(`This 3MF refers to a missing object (${id}).`);
     if (obj.type === 'support' || obj.type === 'solidsupport') return;
-    const name = obj.name || inheritedName || `Object ${id}`;
+    const name = obj.name || slots.names.byPart.get(id) || slots.names.byObject.get(parentId ?? id) || inheritedName || `Object ${id}`;
     if (obj.mesh) {
       const { verts, tris, tpid, tp1, tpaint } = obj.mesh;
       triangles += tris.length / 3;
@@ -244,6 +264,8 @@ export async function parse3MF(buffer) {
     if (!seen.has(p.positions)) { seen.add(p.positions); if (k !== 1) for (let i = 0; i < p.positions.length; i++) p.positions[i] *= k; }
     p.positions = compactVertices(p);
   }
+  const project = await readProject(zip, rootModel.meta);
+  if (project) parts.project = project;
   return parts;
 }
 
@@ -376,7 +398,7 @@ export async function readModelFiles(files, { colors = 6 } = {}) {
     }
   }
   const parts = await parseMesh(main.name, await main.arrayBuffer(), { mtl, colors });
-  return { file: main, parts, notes: parts.notes || [], painted: parts.painted || null };
+  return { file: main, parts, notes: parts.notes || [], painted: parts.painted || null, project: parts.project || null };
 }
 
 export async function parseMesh(filename, buffer, { mtl = null, colors = 6 } = {}) {

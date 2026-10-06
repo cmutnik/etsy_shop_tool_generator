@@ -10,6 +10,7 @@ Open an existing STL or 3MF, change its size and orientation, add a hanging tab 
 | `index.html`, `modifier.js` | The page and its wiring (no geometry in here) |
 | `geometry.js` | `transformParts()` (units, rotate, mirror, scale, centre, drop to bed), `partStats()` (triangles, volume, open edges), `buildGroup()` (preview / export group) |
 | `attach.js` | `buildTab()` and `buildLabel()`, built in the model's final coordinates |
+| `project.js` | `patchProjectSettings()`, `describeProject()`: carrying a slicer project's print settings into the saved 3MF (experimental) |
 | `history.js` | `createHistory()`: undo / redo of recorded states (pure) |
 | `repair.js` | `repairPart()` and `describeRepair()`: weld, clean, orient, fill holes |
 | `boolean3d.js` | `cutHole()`, `cutText()`, `splitModel()` with manifold-3d, loaded on first use |
@@ -36,10 +37,14 @@ Open an existing STL or 3MF, change its size and orientation, add a hanging tab 
 
 - **Compressed 3MF.** The page downloads `export3MFCompressed()` (deflate through `CompressionStream`); entries under 1 KB stay stored. Same package, any slicer opens it; `unzip -t` is part of the test.
 
+- **Slicer project 3MFs.** Tested against a real Bambu Studio 2.3.5 file: objects stored one per file under `3D/Objects/` and reached through `p:path` components, build items with scale + rotation, an object-level `extruder` (0 means default), names only in `Metadata/model_settings.config` (read by `readSlots()` into `names`), painted colours as `paint_color` strings, and the filament palette in `project_settings.config`. The synthetic test in `tests/mesh-modifier.test.mjs` reproduces that layout.
+
+- **Keeping print settings (experimental).** The importer returns `parts.project = { application, version, files }` for the `Metadata/project_settings.config` and `*_settings_N.config` files of a Bambu / Orca project. On saving, `export3MFCompressed()` takes `extraFiles` (copied byte for byte, except `filament_colour` in `project_settings.config`, which `patchProjectSettings()` updates so slot n has the colour the parts in slot n have in the page) and, for the second level, `application` / `extraMetadata` so the model says it was written by the slicer (`BambuStudio-2.3.5`), which some slicers need before they treat a file as their own project. Verified: the files are in the package, byte-identical apart from the colours, and the package passes `unzip -t`. **Not verified:** that any slicer loads the profile from the result.
+
 ## Limits
 
 - 3,000,000 triangles (the page warns and refuses above that).
-- Not read from a 3MF: slicer project settings, textures, per-vertex colour gradients, beam lattices, the slice extension.
+- Not read from a 3MF: slicer print profiles and plate layout (`project_settings.config` is only read for its filament colours), textures, per-vertex colour gradients, beam lattices, the slice extension.
 - Repair is basic: it does not untangle self-intersections or edges shared by three or more triangles, and it will not invent large missing areas. A part with open edges cannot be cut.
 
 ## Tests

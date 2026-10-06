@@ -170,10 +170,10 @@ $('reduce').addEventListener('click', async () => {
     await new Promise(r => setTimeout(r, 30));
     const unitScale = num('unit') * ((num('scalePct') || 100) / 100);          // the limit is in mm, the file may not be
     const before = snapshot();
-    const r = await simplifyParts(source.parts, { include: source.include, target: num('reduceTo') || 100000, maxDeviation: (num('maxDev') || 0.2) / unitScale });
+    const r = await simplifyParts(source.parts, { include: source.include, target: num('reduceTo') || 100000, maxDeviation: (num('maxDev') || Math.max(0.005, 0.0015 * Math.max(...(shown?.size || [1])))) / unitScale });
     if (r.after !== r.before) { source.original ||= before; adopt(r.list); }
     const lines = [r.after === r.before ? `Already ${r.before.toLocaleString()} triangles: nothing to reduce.` : `${r.before.toLocaleString()} -> ${r.after.toLocaleString()} triangles; the surface moved by at most ${round(r.deviation * unitScale, 2)} mm.`];
-    if (!r.reached) lines.push(`Could not get down to ${(num('reduceTo') || 100000).toLocaleString()} without moving the surface more than ${num('maxDev') || 0.2} mm. Allow a bigger move, or ask for more triangles.`);
+    if (!r.reached) lines.push(`Could not get down to ${(num('reduceTo') || 100000).toLocaleString()} without moving the surface more than ${round(r.deviation * unitScale, 3)} mm. Allow a bigger move, or ask for more triangles.`);
     if (r.open.length) lines.push(`Not reduced because they are not closed: ${r.open.join(', ')}. Repair them first.`);
     fixDone(lines);
   } catch (e) { showError(e.message || String(e)); }

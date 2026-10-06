@@ -605,3 +605,64 @@ test('3MF: the compressed export is much smaller, reads back identically, and th
   catch (e) { if (e.code !== 'ENOENT') throw e; }                              // no system unzip here: the round trip above already proved it
   finally { fsMod.unlinkSync(file); }
 });
+
+// ---------- a slicer-project 3MF (the layout Bambu Studio writes) ----------
+test('3MF from Bambu Studio: objects in separate files, names and slots from model_settings.config, transforms with scale and rotation', async () => {
+  const cube = box(0, 0, 0, 10, 10, 10), vxml = Array.from({ length: 8 }, (_, i) => `<vertex x="${cube.positions[i * 3]}" y="${cube.positions[i * 3 + 1]}" z="${cube.positions[i * 3 + 2]}"/>`).join('');
+  const txml = Array.from({ length: 12 }, (_, t) => `<triangle v1="${cube.indices[t * 3]}" v2="${cube.indices[t * 3 + 1]}" v3="${cube.indices[t * 3 + 2]}"/>`).join('');
+  const objectFile = id => `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="${id}" type="model"><mesh><vertices>${vxml}</vertices><triangles>${txml}</triangles></mesh></object></resources><build/></model>`;
+  const root = `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p"><resources>
+    <object id="2" type="model"><components><component p:path="/3D/Objects/a.model" objectid="1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components></object>
+    <object id="4" type="model"><components><component p:path="/3D/Objects/b.model" objectid="3" transform="1 0 0 0 1 0 0 0 1 0 0 0"/></components></object></resources>
+    <build><item objectid="2" transform="1 0 0 0 1 0 0 0 1 135.5 136 0.4"/><item objectid="4" transform="0 3 0 -3 0 0 0 0 3 75 139 38"/></build></model>`;
+  const rels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>';
+  const cfg = `<config><object id="2"><metadata key="name" value="Base plate.obj"/><metadata key="extruder" value="0"/><part id="1" subtype="normal_part"><metadata key="name" value="Base plate.obj"/></part></object>
+    <object id="4"><metadata key="name" value="Lid"/><metadata key="extruder" value="2"/><part id="3" subtype="normal_part"><metadata key="name" value="Lid"/></part></object></config>`;
+  const parts = await parse3MF(zipStore([['_rels/.rels', rels], ['3D/3dmodel.model', root], ['3D/Objects/a.model', objectFile(1)], ['3D/Objects/b.model', objectFile(3)], ['Metadata/model_settings.config', cfg]]));
+  assert.deepEqual(parts.map(p => p.name), ['Base plate.obj', 'Lid'], 'names come from the slicer config, not "Object 2"');
+  assert.equal(parts[1].slot, 2, 'object-level extruder 2'); assert.equal(parts[0].slot, undefined, 'extruder 0 means "default", not slot 0');
+  const lid = bounds(parts[1]);                                                  // 10 mm cube, turned 90 degrees and scaled x3: 30 mm, placed at (75, 139, 38)
+  near(lid.size?.[0] ?? lid.max[0] - lid.min[0], 30, 'scaled x3'); near(lid.min[2], 38, 'z from the build transform'); near(lid.min[0], 75 - 30, 'x: rotated 90 degrees about z, so it extends to -x');
+  near(bounds(parts[0]).min[0], 135.5, 'plain translation');
+});
+
+// ---------- keeping a slicer project's print settings ----------
+const { patchProjectSettings, describeProject } = await import('../tools/mesh-modifier/project.js');
+const projectJson = JSON.stringify({ printer_settings_id: 'Snapmaker U1 (0.4 nozzle)', print_settings_id: '0.20 Standard (0.4 nozzle) - mine', layer_height: '0.2', filament_colour: ['#996633', '#F26722', '#FB0207', '#000000'], unrelated: { keep: ['me'] } }, null, 4);
+
+test('project settings: only the filament colours that changed are rewritten, the rest is kept', () => {
+  const same = patchProjectSettings(projectJson, new Map([[1, '#996633'], [2, '#f26722']]));
+  assert.equal(same.text, projectJson, 'nothing changed, so the text is returned untouched'); assert.deepEqual(same.changed, []);
+  const r = patchProjectSettings(projectJson, new Map([[2, '#00aa00'], [4, '#111111'], [9, '#ffffff']]));
+  const j = JSON.parse(r.text);
+  assert.deepEqual(j.filament_colour, ['#996633', '#00AA00', '#FB0207', '#111111']);
+  assert.deepEqual(r.changed, [2, 4]); assert.deepEqual(r.beyond, [9], 'slot 9 has no filament in a 4-filament project');
+  assert.deepEqual({ ...j, filament_colour: 0 }, { ...JSON.parse(projectJson), filament_colour: 0 }, 'every other setting is identical');
+  assert.deepEqual(patchProjectSettings('not json', new Map([[1, '#ffffff']])).changed, []);
+  assert.deepEqual(describeProject(projectJson), { printer: 'Snapmaker U1 (0.4 nozzle)', print: '0.20 Standard (0.4 nozzle) - mine', filaments: 4 });
+});
+
+test('project settings: an opened slicer project is remembered and written back byte for byte, with the options asked for', async () => {
+  const cube = box(0, 0, 0, 10, 10, 10), vxml = Array.from({ length: 8 }, (_, i) => `<vertex x="${cube.positions[i * 3]}" y="${cube.positions[i * 3 + 1]}" z="${cube.positions[i * 3 + 2]}"/>`).join('');
+  const txml = Array.from({ length: 12 }, (_, t) => `<triangle v1="${cube.indices[t * 3]}" v2="${cube.indices[t * 3 + 1]}" v3="${cube.indices[t * 3 + 2]}"/>`).join('');
+  const model = `<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><metadata name="Application">BambuStudio-2.3.5</metadata><metadata name="BambuStudio:3mfVersion">1</metadata><resources><object id="1" type="model"><mesh><vertices>${vxml}</vertices><triangles>${txml}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
+  const filament = '{"filament_type":["PLA"]}';
+  const original = zipStore([['3D/3dmodel.model', model], ['Metadata/project_settings.config', projectJson], ['Metadata/filament_settings_1.config', filament], ['Metadata/plate_1.png', Uint8Array.from([137, 80, 78, 71])]]);
+  const parts = await parse3MF(original);
+  assert.equal(parts.project.application, 'BambuStudio-2.3.5'); assert.equal(parts.project.version, '1');
+  assert.deepEqual(parts.project.files.map(f => f[0]).sort(), ['Metadata/filament_settings_1.config', 'Metadata/project_settings.config'], 'profiles only, not thumbnails');
+  assert.equal(new TextDecoder().decode(parts.project.files.find(f => f[0].endsWith('project_settings.config'))[1]), projectJson);
+  assert.equal((await parse3MF(zipStore([['3D/3dmodel.model', model.replace(/<metadata[^>]*>[^<]*<\/metadata>/g, '')]]))).project, undefined, 'a plain 3MF has no project');
+
+  const { group, parts: meta } = buildGroup(parts);
+  const text = async blob => { const z = unzip(new Uint8Array(await blob.arrayBuffer())); return { z, model: new TextDecoder().decode(await z.read('3D/3dmodel.model')) }; };
+  const plain = await text(await export3MFCompressed(group, { title: 't' }));
+  assert.ok(!plain.z.has('Metadata/project_settings.config')); assert.match(plain.model, /Application">Etsy Shop Tools</);
+  const files = await text(await export3MFCompressed(group, { title: 't', extraFiles: parts.project.files }));
+  assert.equal(new TextDecoder().decode(await files.z.read('Metadata/project_settings.config')), projectJson, 'copied through unchanged');
+  assert.equal(new TextDecoder().decode(await files.z.read('Metadata/filament_settings_1.config')), filament);
+  assert.match(files.model, /Application">Etsy Shop Tools</, 'file-only mode still says what wrote it');
+  const marked = await text(await export3MFCompressed(group, { title: 't', parts: meta, extraFiles: parts.project.files, application: parts.project.application, extraMetadata: { 'BambuStudio:3mfVersion': parts.project.version } }));
+  assert.match(marked.model, /Application">BambuStudio-2\.3\.5</); assert.match(marked.model, /BambuStudio:3mfVersion">1</);
+  assert.equal((await parse3MF(await (await export3MFCompressed(group, { title: 't', extraFiles: parts.project.files })).arrayBuffer())).length, 1, 'and it still reads back as a model');
+});

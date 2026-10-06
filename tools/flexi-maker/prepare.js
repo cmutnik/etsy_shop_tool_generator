@@ -4,7 +4,7 @@
 // Colour patches of one surface (parts sharing a `group`) are simplified together and split by colour again afterwards.
 import { loadManifold, toManifold, fromManifold } from '../mesh-modifier/boolean3d.js';
 import { partStats, mergeGroups } from '../mesh-modifier/geometry.js';
-import { splitByLabel } from './flexi.js';
+import { relabel, splitLabelled } from '../mesh-modifier/repair-groups.js';
 
 export const SOFT_LIMIT = 150_000;      // above this the joints are slow to build
 export const HARD_LIMIT = 600_000;      // above this the page refuses to try
@@ -24,20 +24,24 @@ export async function simplifyParts(parts, { include = parts.map(() => true), ta
   if (before <= target) return { list: keepList(), before, after: before, deviation: 0, reached: true, open };
   const w = await loadManifold(), made = [], keep = m => { made.push(m); return m; };
   try {
-    const solids = items.map((x, k) => (closed[k] ? keep(toManifold(w, x.item)) : null)), origin = solids.map(m => m && m.getMesh().runOriginalID[0]);
+    // colours are not carried through the simplifying (labels make it stop at every colour border); they are put back by nearest triangle afterwards
+    const solids = items.map((x, k) => (closed[k] ? keep(toManifold(w, { ...x.item, labels: undefined })) : null));
     const fixed = before - items.reduce((s, x, k) => s + (closed[k] ? x.item.indices.length / 3 : 0), 0);   // open solids and unticked parts keep their triangles
-    let tol = maxDeviation / 64, best = null;
-    for (; ; tol *= 2) {
-      const t = Math.min(tol, maxDeviation), simple = solids.map(m => (m ? keep(m.simplify(t)) : null));
-      const total = fixed + simple.reduce((s, m) => s + (m ? m.numTri() : 0), 0);
-      best = { simple, total, tol: t };
-      if (total <= target || t >= maxDeviation) break;
+    // simplify is not steady: on a messy mesh a bigger tolerance can leave more triangles than a smaller one, so try a ladder and keep the best step
+    const run = t => solids.map(m => (m ? m.simplify(t) : null)), count = simple => fixed + simple.reduce((s, m) => s + (m ? m.numTri() : 0), 0);
+    let bestTol = null, bestTotal = Infinity, simple = null;
+    for (let tol = maxDeviation / 16; ; tol *= 2) {
+      const t = Math.min(tol, maxDeviation), trial = run(t), total = count(trial);
+      if (total < bestTotal) { bestTotal = total; bestTol = t; if (simple) simple.forEach(m => m && m.delete()); simple = trial; } else trial.forEach(m => m && m.delete());
+      if (bestTotal <= target || t >= maxDeviation) break;
     }
+    simple.forEach(m => m && made.push(m));
+    const best = { simple, total: bestTotal, tol: bestTol };
     const replaced = new Map();                                               // original index -> its new parts
     items.forEach((x, k) => {
       if (!best.simple[k]) return;
       if (!x.item.members) { replaced.set(x.from[0], [{ part: fromManifold(best.simple[k], x.item), from: x.from[0] }]); return; }
-      const subs = splitByLabel(best.simple[k], origin[k]);
+      const simplified = fromManifold(best.simple[k], x.item), subs = splitLabelled(simplified, relabel(simplified, x.item));
       replaced.set(x.from[0], subs.map(sub => ({ part: { ...x.item.members[sub.label], positions: sub.positions, indices: sub.indices }, from: x.from[sub.label] })));
       x.from.slice(1).forEach(i => replaced.set(i, []));                      // the group's other members are covered by the first entry
     });

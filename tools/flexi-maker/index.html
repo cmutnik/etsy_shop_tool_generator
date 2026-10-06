@@ -100,11 +100,11 @@
         </div>
         <div class="row">
           <label>Reduce to about (triangles) <input type="number" id="reduceTo" value="100000" min="5000" max="400000" step="5000"></label>
-          <label>Surface may move up to (mm) <input type="number" id="maxDev" value="0.2" min="0.01" max="5" step="0.05"></label>
+          <label>Surface may move up to (mm) <input type="number" id="maxDev" placeholder="automatic" min="0.001" max="5" step="0.01"></label>
         </div>
         <button id="reduce" type="button" class="small">Reduce triangles</button>
         <div id="fixReport" class="info"></div>
-        <small class="muted">Joints are built by 3D cutting, which needs every part to be a closed solid and works best under about 150,000 triangles. Repair closes small gaps and cracks. Reduce merges tiny edges (scans and sculpts have far more triangles than they need) and never moves the surface by more than the amount you set; it only works on closed parts. A part that still will not close can be unticked; it is then left out of the result.</small>
+        <small class="muted">Joints are built by 3D cutting, which needs every part to be a closed solid and works best under about 150,000 triangles. Repair closes small gaps and cracks. Reduce merges tiny edges (scans and sculpts have far more triangles than they need) and never moves the surface by more than the amount you set (left empty, about 0.15 % of the model's longest side); it only works on closed parts. A part that still will not close can be unticked; it is then left out of the result.</small>
       </fieldset>
 
       <div id="download" class="row">

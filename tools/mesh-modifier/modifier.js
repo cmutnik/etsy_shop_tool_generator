@@ -9,6 +9,7 @@ import { buildTab, buildLabel, placeLabel, buildInfill, TAB_STYLES, TAB_SIDES } 
 import { loadManifold, cutHole, cutText, splitModel } from './boolean3d.js';
 import { repairPart, describeRepair } from './repair.js';
 import { createHistory } from './history.js';
+import { patchProjectSettings, describeProject } from './project.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
@@ -58,13 +59,14 @@ async function load(files) {
   lastFiles = [...files];
   $('status').textContent = 'Reading the file...';
   try {
-    const { file, parts: read, notes, painted } = await readModelFiles(lastFiles, { colors: parseInt($('paintColors').value, 10) || 6 });
+    const { file, parts: read, notes, painted, project } = await readModelFiles(lastFiles, { colors: parseInt($('paintColors').value, 10) || 6 });
     $('paintRow').hidden = !painted;
     let parts = read;
     const { parts: turned, stats, flipped: inside } = analyseParts(parts);     // inside-out solids are turned the right way round; colour patches are judged together
     parts = turned;
     if (stats.reduce((s, x) => s + x.triangles, 0) > MAX_TRIANGLES) throw new Error('That model has too many triangles for the browser.');
-    source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name), notes, flipped: inside, original: null, repairLog: [], include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null) };
+    source = { name: file.name.replace(/\.[^.]+$/, ''), parts, stats, is3mf: /\.3mf$/i.test(file.name), notes, flipped: inside, original: null, repairLog: [], include: parts.map(() => true), colors: parts.map(p => p.color), slots: parts.map(p => p.slot || null), project: project || null };
+    showProject();
     buildPartList();
     resetTransform();
     framed = false;
@@ -118,6 +120,32 @@ $('holeDir').addEventListener('change', () => {
   $('holeA').value = 0;
   $('holeB').value = sideways ? round(result.sizeObj.height / 2, 1) : 0;
 });
+
+// ---------- slicer project settings ----------
+const decode = bytes => new TextDecoder().decode(bytes);
+function showProject() {
+  const p = source?.project;
+  $('profileRow').hidden = !p;
+  if (!p) return;
+  const d = describeProject(decode(p.files.find(f => f[0] === 'Metadata/project_settings.config')[1]));
+  $('profileInfo').textContent = [d.printer && `Printer: ${d.printer}`, d.print && `Print profile: ${d.print}`, d.filaments && `${d.filaments} filaments`].filter(Boolean).join('  |  ');
+}
+
+/** The extra options for export3MFCompressed: the project's files (with filament colours updated to the page's colours) and, if asked, its Application mark. */
+function projectOptions() {
+  const mode = $('keepProfile').value, p = source?.project;
+  if (!p || mode === 'none') return { opts: {}, notes: [] };
+  const notes = [], files = [];
+  for (const [name, bytes] of p.files) {
+    if (name !== 'Metadata/project_settings.config') { files.push([name, bytes]); continue; }
+    const r = patchProjectSettings(decode(bytes), result.slotColors);
+    files.push([name, r.text]);
+    if (r.beyond.length) notes.push(`Filament slot${r.beyond.length === 1 ? '' : 's'} ${r.beyond.join(', ')} ${r.beyond.length === 1 ? 'is' : 'are'} beyond the filaments in the project, so the slicer will not know ${r.beyond.length === 1 ? 'its' : 'their'} colour.`);
+  }
+  const opts = { extraFiles: files };
+  if (mode === 'mark') { opts.application = p.application || undefined; if (p.version) opts.extraMetadata = { 'BambuStudio:3mfVersion': p.version }; }
+  return { opts, notes };
+}
 
 // ---------- repair ----------
 $('repair').addEventListener('click', async () => {
@@ -348,14 +376,15 @@ async function build() {
   }
 
   const { group, parts: meta } = buildGroup(parts, extras);
-  assignSlots([...parts, ...extras]).forEach((s, i) => { meta[i].extruder = s; });
+  const slotOf = assignSlots([...parts, ...extras]), slotColors = new Map();
+  [...parts, ...extras].forEach((item, i) => { meta[i].extruder = slotOf[i]; if (!slotColors.has(slotOf[i]) && item.color) slotColors.set(slotOf[i], item.color); });   // the first colour in a slot is the slot's colour
   // show the slot each model part will get when the box is empty
   const autoSlots = assignSlots(used);
   let shown = 0;
   document.querySelectorAll('#partList input.slot').forEach((el, i) => { if (source.include[i]) el.placeholder = String(autoSlots[shown++]); else el.placeholder = '-'; });
   viewer.setObject(group);
   const [w, d, h] = boundsOfParts(parts).size;
-  result = { group, meta, size: xf.size, unscaledSize: xf.unscaledSize, sizeObj: { width: w, depth: d, height: h }, colored: parts.some(p => p.color) };
+  result = { group, meta, slotColors, size: xf.size, unscaledSize: xf.unscaledSize, sizeObj: { width: w, depth: d, height: h }, colored: parts.some(p => p.color) };
   if (!framed) { framed = true; viewer.resize(); viewer.setView(view, result.sizeObj); }
   showError(error);
 
@@ -408,7 +437,9 @@ $('download3mf').addEventListener('click', async () => {
   $('download3mf').disabled = true;
   await new Promise(r => setTimeout(r, 30));                                      // let the message show before the heavy work
   try {
-    downloadBlob(await export3MFCompressed(result.group, { title: source.name, parts: keep ? result.meta : null }), outName('3mf'));
+    const { opts, notes } = projectOptions();
+    downloadBlob(await export3MFCompressed(result.group, { title: source.name, parts: keep ? result.meta : null, ...opts }), outName('3mf'));
+    $('profileNotes').textContent = notes.join(' ');
   } catch (e) {
     showError(`Could not build the 3MF: ${e.message || e}`);
   } finally {

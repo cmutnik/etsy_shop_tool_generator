@@ -53,6 +53,8 @@ const RELS = '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http
 /**
  * @param {object} opts
  *  title
+ *  extraFiles  more files to put in the package: [[path, string | Uint8Array]]
+ *  application / extraMetadata  what to write as the model's `Application` and any further `<metadata>` (a slicer only treats the file as its own project when it says so)
  *  parts  optional multi-colour split: [{ name, label, names?, extruder? }]. A part's filament slot is `extruder` when given (1-based;
  *         several parts may share one), otherwise its position (first = slot 1). Meshes are
  *         grouped by `mesh.name` (or any of `names`, to merge several meshes into one part); each group becomes its
@@ -64,7 +66,8 @@ const RELS = '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http
  * written only as hints for other viewers. The actual colour that prints is whatever filament is loaded in
  * that slot. (This layout is verified in Orca.)
  */
-function files3MF(object, { title = 'model', parts = null } = {}) {
+function files3MF(object, { title = 'model', parts = null, extraFiles = [], application = null, extraMetadata = {} } = {}) {
+  const appMeta = `<metadata name="Application">${esc(application || 'Etsy Shop Tools')}</metadata>` + Object.entries(extraMetadata).map(([k, v]) => `\n<metadata name="${esc(k)}">${esc(v)}</metadata>`).join('');
   const { verts, tris, triMat, triName, palette } = collectMesh(object);
   const vertexXml = ids => ids.map(i => `<vertex x="${verts[i * 3]}" y="${verts[i * 3 + 1]}" z="${verts[i * 3 + 2]}"/>`).join('');
   const files = [['[Content_Types].xml', CONTENT_TYPES], ['_rels/.rels', RELS]];
@@ -77,7 +80,7 @@ function files3MF(object, { title = 'model', parts = null } = {}) {
     model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" ${NS}>
 <metadata name="Title">${esc(title)}</metadata>
-<metadata name="Application">Etsy Shop Tools</metadata>
+${appMeta}
 <resources><object id="1" name="${esc(title)}" type="model"><mesh><vertices>${vertexXml(all)}</vertices><triangles>${triangles.join('')}</triangles></mesh></object></resources>
 <build><item objectid="1"/></build>
 </model>`;
@@ -110,7 +113,7 @@ function files3MF(object, { title = 'model', parts = null } = {}) {
     model = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" ${NS} xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">
 <metadata name="Title">${esc(title)}</metadata>
-<metadata name="Application">Etsy Shop Tools</metadata>
+${appMeta}
 <resources>
 <basematerials id="${BASE_ID}">${parts.map((p, i) => `<base name="${esc(p.label || p.name)}" displaycolor="${hex(colors[i])}"/>`).join('')}</basematerials>
 <m:colorgroup id="${COLOR_ID}">${colors.map(c => `<m:color color="${hex(c)}"/>`).join('')}</m:colorgroup>
@@ -121,6 +124,7 @@ ${objects}<object id="${parentId}" name="${esc(title)}" type="model"><components
     files.push(['Metadata/model_settings.config', `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n  <object id="${parentId}">\n${settings}  </object>\n</config>`]);
   }
   files.push(['3D/3dmodel.model', model]);
+  for (const f of extraFiles) files.push(f);                                    // e.g. a slicer project's Metadata/*.config, copied through
   return files;
 }
 
