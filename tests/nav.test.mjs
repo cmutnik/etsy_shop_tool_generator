@@ -7,7 +7,7 @@ import { isCurrent } from '../shared/js/nav.js';
 
 const root = path.join(import.meta.dirname, '..');
 const registry = JSON.parse(fs.readFileSync(path.join(root, 'tools', 'registry.json'), 'utf8'));
-const live = registry.filter(t => t.status === 'live');
+const live = registry.filter(t => t.status === 'live' && !t.url);          // tools with a url are hosted elsewhere and have no page here
 
 test('isCurrent: matches the tool page with or without index.html, at any hosting path, and not its neighbours', () => {
   assert.equal(isCurrent('/tools/stamp/', '/tools/stamp/'), true);

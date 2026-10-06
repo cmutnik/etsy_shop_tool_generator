@@ -20,13 +20,14 @@
   <script type="module" src="shared/js/nav.js"></script>
   <script>
     // Cards are generated from tools/registry.json - add a tool there, not here.
-    fetch('tools/registry.json').then(r => r.json()).then(tools => {
+    fetch('tools/registry.json', { cache: 'no-cache' }).then(r => r.json()).then(tools => {
       const cards = document.getElementById('cards');
       for (const t of tools) {
         const live = t.status === 'live';
         const el = document.createElement(live ? 'a' : 'div');
         el.className = 'card' + (live ? '' : ' soon');
-        if (live) el.href = 'tools/' + t.path;
+        if (live) el.href = t.url || 'tools/' + t.path;
+        if (live && t.url) { el.target = '_blank'; el.rel = 'noopener'; }   // external tool: new tab
         const h = document.createElement('h2'); h.textContent = t.title;
         const p = document.createElement('p'); p.textContent = live ? t.description : t.description + ' (' + (t.status === 'planned' ? 'coming soon' : 'idea') + ')';
         el.append(h, p);

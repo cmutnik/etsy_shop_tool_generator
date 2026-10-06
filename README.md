@@ -13,7 +13,7 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
 | [Flexi Maker](tools/flexi-maker/) | live | Turn a model into an articulated, print-in-place flexi with chain-link (hook and loop) or ball-and-socket joints; keeps 3MF colours |
-| [3D Wedding Invite](tools/wedding-invite-3d/) | planned | Invitation photo or SVG to a layered 3D print |
+| [3D Wedding Invite](https://invite2svg.streamlit.app/) | live (external) | Invitation photo or SVG to a layered 3D print, in the separate invite2svg Streamlit app |
 | [STL / 3MF Modifier](tools/mesh-modifier/) | live | Open an existing model, resize / rotate / mirror it, add a hanging tab or raised text; keeps 3MF parts and colours |
 
 The list shown on the home page comes from [tools/registry.json](tools/registry.json).

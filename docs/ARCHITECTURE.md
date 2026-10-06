@@ -33,12 +33,11 @@ shared/js/                  code used by more than one tool
   download.js               saveBlob-as-download helper (no dependencies)
   export.js                 binary STL, 3MF, zip writer, download helper
 tools/
-  registry.json             list of tools (live / planned / idea)
+  registry.json             list of tools (live / planned / idea); a live entry with "url" instead of "path" links to a tool hosted elsewhere
   stamp/                    3D stamp generator (live); imprint.js draws the 2D preview + flags thin details
   image-prep/               picture -> black & white / SVG line art (live, no external libraries)
   qr-keychain/ qr-stand/    QR keychain and QR stand (live)
   mesh-modifier/            STL / 3MF modifier (live): geometry.js transforms parts, attach.js builds the tab and label (added on, overlapping), boolean3d.js does the cuts with lazily loaded manifold-3d
-  wedding-invite-3d/        planned - README only, see docs/ROADMAP.md
 tests/                      node --test; geometry, import, export (npm test)
 docs/                       this file + roadmap
 ```

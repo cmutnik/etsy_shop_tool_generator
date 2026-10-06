@@ -4,15 +4,15 @@
 ## Done
 - **Image Prep** (`tools/image-prep/`): presets, a print-width thin-detail check, zoom, mark-based background removal for busy photos, Bezier-fitted SVG curves, black & white (threshold / adaptive / dither), SVG line art (trace / edges / centre line), background removal and cut-out, colour posterize into registered layers for multi-colour stamps, hand-off to the stamp generator (with a "keep the picture's frame" option).
 - **3D Stamp Generator** (`tools/stamp/`): text, SVG/PNG/JPG logo, border, STL + 3MF export.
-- **QR Code Stand** (`tools/qr-stand/`): plate with icon/title banner and insertion tab, slotted base, assembled preview, STL and colour 3MF. Ported from `invite2svg/`; the Python page can be removed once you are happy with it.
-- **QR Code Keychain** (`tools/qr-keychain/`): QR plate + loop, raised/engraved, scan check, STL + colour 3MF. Ported from `invite2svg/`; the Python page can be removed once you are happy with it.
+- **QR Code Stand** (`tools/qr-stand/`): plate with icon/title banner and insertion tab, slotted base, assembled preview, STL and colour 3MF. Ported from [invite2svg](https://invite2svg.streamlit.app/); the Python page can be removed once you are happy with it.
+- **QR Code Keychain** (`tools/qr-keychain/`): QR plate + loop, raised/engraved, scan check, STL + colour 3MF. Ported from [invite2svg](https://invite2svg.streamlit.app/); the Python page can be removed once you are happy with it.
 
 - **STL / 3MF Modifier** (`tools/mesh-modifier/`): STL, 3MF and OBJ import (own readers; parts and colours kept, OBJ colours from its .mtl, or vertex colours reduced to a palette; slicer 3MFs read the filament palette, extruders and painted triangles), size / rotate / mirror / bed placement, hanging tab, raised text, lay flat on largest face, 3D cuts with manifold-3d (hole, engraved text, split with pegs), mesh repair (weld, clean, orient, fill holes, with undo), filament slots (read from 3MF, shared by colour, overridable), undo / redo, holes in six directions, engraved text with a second-colour infill part, per-part colour / include, inside-out fix, STL and multi-part 3MF export.
 - **Flexi Maker** (`tools/flexi-maker/`): cut a model across and join the segments with print-in-place hook-and-loop (chain link) or ball-and-socket joints (manifold-3d), one joint per separate piece of each cross-section, notch for bend, colours / slots kept per part, laid on its side for printing. Ideas: test-print and tune default clearance, pick joint positions in the preview, other joint types (pin hinge), a thin-piece bridge instead of leaving it solid.
 
 ## Porting the QR tools from `invite2svg/`
 
-The Python/Streamlit tools in `invite2svg/` need a server, so they can't live on GitHub Pages. They are being
+The Python/Streamlit tools in `invite2svg/` (hosted at https://invite2svg.streamlit.app/) need a server, so they can't live on GitHub Pages. They are being
 re-implemented in JavaScript here, using the same geometry strategy (build everything as 2D polygons, then
 extrude - no 3D boolean library). `invite2svg/` stays untouched, and its hosted Streamlit app keeps working,
 until each tool has a working equivalent here.
@@ -28,10 +28,10 @@ until each tool has a working equivalent here.
 | `qr_stand_utils.build_keychain_loop_mesh` | Loop with hole | `tools/qr-keychain/geometry.js` **(done)** | `loops.js`: six styles built with 2D polygon booleans (`shared/js/boolean2d.js`). |
 | `pages/3_*` | Keychain UI | `tools/qr-keychain/` **(done)** | |
 | `pages/2_*` | Stand UI | `tools/qr-stand/` **(done)** | |
-| `card_utils.py`, `extract_*.py`, `photo_to_svg.py` | Invite photo -> layers/SVG | `tools/wedding-invite-3d/` | Deskew + border detection used OpenCV; options are opencv.js (large, WASM) or a simpler manual-corners UI. `shared/js/image-trace.js` already covers the vectorising. |
-| `card3d_utils.py` | Layered extrusion | `tools/wedding-invite-3d/` | Same "cap + base + raised pegs" idea as the stamp. |
+| `card_utils.py`, `extract_*.py`, `photo_to_svg.py` | Invite photo -> layers/SVG | the hosted [invite2svg app](https://invite2svg.streamlit.app/) (linked from the home page; no JS port planned) | Deskew + border detection used OpenCV; options are opencv.js (large, WASM) or a simpler manual-corners UI. `shared/js/image-trace.js` already covers the vectorising. |
+| `card3d_utils.py` | Layered extrusion | the hosted [invite2svg app](https://invite2svg.streamlit.app/) | Same "cap + base + raised pegs" idea as the stamp. |
 
-Suggested order: ~~QR keychain~~ -> ~~QR stand~~ -> wedding invite.
+Suggested order: ~~QR keychain~~ -> ~~QR stand~~ -> ~~wedding invite~~ (stays on the hosted app).
 Remove each `invite2svg/` page once its replacement ships.
 
 ## Ideas
