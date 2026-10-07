@@ -16,6 +16,7 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [Layered Colour Art](tools/layered-art/) | live | Photo or logo reduced to a few filament colours and printed as stacked steps, HueForge-style (colour 3MF, one part per colour) |
 | [Name Keychain](tools/name-keychain/) | live | A name as raised letters on a plate that follows them (or a rounded rectangle), with a keyring loop (STL, two-colour 3MF) |
 | [Cookie Cutter Maker](tools/cookie-cutter/) | live | A built-in shape or a picture's outline as a cookie or clay cutter with a sharp edge and a press flange (STL) |
+| [Magnets and Ornaments](tools/magnets/) | live | Any shape as a fridge magnet or hanging ornament: raised text or picture, a rim, a pocket for a disc magnet, a loop (STL, two-colour 3MF) |
 | [Plant Markers](tools/plant-markers/) | live | A list of names to a bed of garden stakes: raised letters on a head plate with a spike (STL / 3MF of the set, or a ZIP of one STL each) |
 | [Listing Photos](tools/listing-photos/) | live | Turn a 3D file into product photos: angle, backdrop, colour and finish, PNGs at Etsy sizes (one, or a set of six) |
 | [Mesh Checker](tools/mesh-checker/) | live | Check a model before it prints: holes, inside-out faces, bed fit, overhangs, thin walls; can repair it |
@@ -77,6 +78,14 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Views:** Overhangs shows steep downward faces in red; Thin walls marks the sampled spots in orange. Optionally check it lying on its largest flat face.
 - **Repair:** one button fixes holes, flipped faces and duplicates (the STL / 3MF Modifier's repair) and re-checks; download the result as an STL.
 - Wall thickness is a sample (about 3,000 points cast inwards), not every face, and the page says so. Code in `shared/js/mesh-check.js`, tested in `tests/mesh-check.test.mjs`.
+
+### Magnets and Ornaments
+
+- **Shape:** the cookie cutter's built-in shapes, or the outline of your own picture.
+- **Front:** an optional raised rim, and artwork from text (any stamp font or your own) or a picture (dark areas raised), scaled to fit and kept inside the rim.
+- **Magnet:** none, one in the best spot, or two side by side; the pocket (set your magnet's size and clearance) is on the back, checked to leave a wall, with a note on printing and gluing it.
+- **Ornament:** an optional loop at the top (five styles), shared with the name keychain.
+- **Output:** STL, or a 3MF with the plate and the raised parts as two filament slots. Code in `tools/magnets/geometry.js`, tested in `tests/magnets.test.mjs`.
 
 ### STL / 3MF Modifier
 

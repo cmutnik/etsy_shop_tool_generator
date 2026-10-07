@@ -6,23 +6,17 @@
 // or the loop). The loop is built like the QR keychain's, by loops.js, then attached on the left or the top.
 import * as THREE from 'three';
 import { layoutText } from '../../shared/js/text-layout.js';
-import { boundsOf, mapGroups, groupsToShapes, extrudeShapes } from '../../shared/js/geometry2d.js';
-import { union, intersection, multiPolygonToGroups, roundedRectRing } from '../../shared/js/boolean2d.js';
+import { boundsOf, groupsToShapes, extrudeShapes } from '../../shared/js/geometry2d.js';
+import { multiPolygonToGroups, roundedRectRing } from '../../shared/js/boolean2d.js';
 import { dilate, fillHoles } from '../../shared/js/offset2d.js';
-import { loopFootprint, loopWall, MIN_WALL } from '../qr-keychain/loops.js';
+import { attachLoop, ATTACH_LOOPS } from '../qr-keychain/attach.js';
 
 export const BACKINGS = [
   { id: 'outline', label: 'Follows the letters (outline)' },
   { id: 'rectangle', label: 'Rounded rectangle' },
   { id: 'none', label: 'Letters only (no plate)' },
 ];
-export const NAME_LOOPS = ['round', 'rounded-square', 'hexagon', 'teardrop', 'lanyard-slot'];
-
-const rotate = (groups, quarterTurns) => {                       // quarterTurns: +1 = counter-clockwise 90 degrees
-  const f = [(x, y) => [x, y], (x, y) => [-y, x], (x, y) => [-x, -y], (x, y) => [y, -x]][((quarterTurns % 4) + 4) % 4];
-  return mapGroups(groups, f);
-};
-const toMulti = groups => groups.map(g => [g.outer, ...g.holes]);
+export const NAME_LOOPS = ATTACH_LOOPS;
 
 /**
  * @param {object} o
@@ -53,29 +47,12 @@ export function buildNameKeychain(o) {
     backing = fillHoles(multiPolygonToGroups(dilate(letters, margin)));
   } else backing = letters;
 
-  // loop: built "above" the plate, so rotate the plate to put the chosen side on top, attach, and rotate back
   let body = backing, loopInfo = null;
   const pos = o.loopPosition || 'left';
   if (pos !== 'none') {
-    const style = o.loopStyle || 'round';
-    if (!NAME_LOOPS.includes(style)) throw new Error(`Unknown loop style: ${style}`);
-    const wall = loopWall({ style, size: o.loopSize, holeDiameter: o.holeDiameter });
-    if (wall < MIN_WALL) throw new Error(`Loop size must leave at least ${MIN_WALL} mm of wall around the hole (now ${wall.toFixed(1)} mm).`);
-    const turns = pos === 'left' ? -1 : 0;                      // left -> top is a clockwise quarter turn
-    const plate = rotate(backing, turns);
-    const pb = boundsOf(plate);
-    const neckWidth = Math.max(3, Math.min(o.loopSize * 0.5, 0.8 * pb.width));
-    const cx = (pb.minX + pb.maxX) / 2;
-    // where the plate's top edge really is in the loop's strip: an outline plate is ragged, so sink the loop down to it
-    const strip = [[cx - neckWidth / 2, pb.minY], [cx + neckWidth / 2, pb.minY], [cx + neckWidth / 2, pb.maxY + 1], [cx - neckWidth / 2, pb.maxY + 1]];
-    const hit = multiPolygonToGroups(intersection(strip, toMulti(plate)));
-    if (!hit.length) throw new Error('The loop cannot reach the letters: use a plate (outline or rectangle), or a different loop position.');
-    const topAt = boundsOf(hit).maxY;
-    const fp = loopFootprint({ style, size: o.loopSize, holeDiameter: o.holeDiameter, slotLength: o.loopSize, neckWidth, neckHeight: 1, sign: 1 });
-    const placed = mapGroups(fp.groups, (x, y) => [x + cx, y + topAt]);
-    const merged = multiPolygonToGroups(union(toMulti([...plate, ...placed])));
-    body = rotate(merged, -turns);
-    loopInfo = { holeCentre: fp.holeCentre, reach: fp.height };
+    const r = attachLoop(backing, { position: pos, style: o.loopStyle || 'round', size: o.loopSize, holeDiameter: o.holeDiameter });
+    body = r.body;
+    loopInfo = { holeCentre: r.holeCentre, reach: r.reach };
   }
   if (!body.length) throw new Error('Nothing to print.');
 

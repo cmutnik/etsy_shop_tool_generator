@@ -60,6 +60,12 @@ export function outerBand(groups, r, o) {
   return clipDifference(strokeRings(ringsOf(groups), r, o), polygonsOf(groups));
 }
 
+/** The shape shrunk inwards by r (thin parts vanish, and holes grow). Returns a MultiPolygon. */
+export function inset(groups, r, o) {
+  if (!groups.length) return [];
+  return clipDifference(polygonsOf(groups), strokeRings(ringsOf(groups), r, o));
+}
+
 /** The shape with its holes removed. */
 export const fillHoles = groups => groups.map(g => ({ outer: g.outer, holes: [] }));
 

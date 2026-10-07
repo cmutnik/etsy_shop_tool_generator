@@ -31,6 +31,7 @@ export function intersection(subject, ...clips) {
 
 /** MultiPolygon -> groups ({ outer, holes }), dropping the closing duplicate point of each ring. */
 export function multiPolygonToGroups(mp) {
+  if (!mp.length) return [];
   const open = ring => ring.slice(0, -1);
   return asMulti(mp).map(([outer, ...holes]) => ({ outer: open(outer), holes: holes.map(open) }));
 }
