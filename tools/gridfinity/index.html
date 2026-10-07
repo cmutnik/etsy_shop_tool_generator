@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
-  <title>Gridfinity Bins - Etsy Shop Tools</title>
+  <title>Gridfinity Bins and Baseplates - Etsy Shop Tools</title>
   <link rel="stylesheet" href="../../assets/style.css">
   <link rel="stylesheet" href="../../assets/tool.css">
   <script type="importmap">
@@ -26,8 +26,13 @@
   <main class="tool-layout">
     <section class="controls" id="controls">
       <fieldset>
+        <legend>What to make</legend>
+        <label><select id="mode"><option value="bin">A storage bin</option><option value="plate">A baseplate (the grid the bins sit in)</option></select></label>
+      </fieldset>
+
+      <fieldset>
         <legend>Size (in Gridfinity units)</legend>
-        <label>Quick start
+        <label data-only="bin">Quick start
           <select id="preset">
             <option value="">Choose a common size...</option>
             <option value="1,1,3">1 x 1 x 3 (42 x 42 x 21 mm)</option>
@@ -41,12 +46,16 @@
         <div class="row">
           <label>Wide (X) <input type="number" id="ux" value="2" min="1" max="8" step="1"></label>
           <label>Deep (Y) <input type="number" id="uy" value="1" min="1" max="8" step="1"></label>
-          <label>Tall <input type="number" id="uh" value="3" min="2" max="12" step="1"></label>
+          <label data-only="bin">Tall <input type="number" id="uh" value="3" min="2" max="12" step="1"></label>
         </div>
-        <small class="muted">One unit is 42 mm across (the bin is 41.5 mm so it clears its neighbour) and 7 mm tall. The height includes the stacking lip.</small>
+        <small class="muted" data-only="bin">One unit is 42 mm across (the bin is 41.5 mm so it clears its neighbour) and 7 mm tall. The height includes the stacking lip.</small>
+        <div data-only="plate" hidden>
+          <label>Your printer's bed (mm, the shorter side) <input type="number" id="bed" value="220" min="100" max="600" step="10"></label>
+          <small class="muted">A baseplate is 42 mm a cell, so a 220 mm bed takes 5 cells each way. Print bigger floors as several plates side by side.</small>
+        </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset data-only="bin">
         <legend>Compartments</legend>
         <div class="row">
           <label>Across (X) <input type="number" id="cx" value="1" min="1" max="8" step="1"></label>
@@ -60,14 +69,14 @@
 
       <fieldset>
         <legend>Features</legend>
-        <label class="inline"><input type="checkbox" id="lip" checked> Stacking lip (bins nest when stacked)</label>
-        <label class="inline"><input type="checkbox" id="magnets"> Magnet holes in the base (6.5 x 2.4 mm)</label>
+        <label class="inline" data-only="bin"><input type="checkbox" id="lip" checked> Stacking lip (bins nest when stacked)</label>
+        <label class="inline"><input type="checkbox" id="magnets"> Magnet holes (6.5 x 2.4 mm)</label>
         <div class="row">
-          <label>Wall (mm) <input type="number" id="wall" value="1.2" min="0.8" max="3" step="0.1"></label>
-          <label>Floor (mm) <input type="number" id="floor" value="1.2" min="0.6" max="6" step="0.2"></label>
+          <label data-only="bin">Wall (mm) <input type="number" id="wall" value="1.2" min="0.8" max="3" step="0.1"></label>
+          <label>Floor (mm) <input type="number" id="floor" value="1.2" min="0.6" max="8" step="0.2"></label>
         </div>
-        <label>Divider thickness (mm) <input type="number" id="divider" value="1.2" min="0.8" max="4" step="0.1"></label>
-        <label>Colour <input type="color" id="color" value="#3a6ea5"></label>
+        <label data-only="bin">Divider thickness (mm) <input type="number" id="divider" value="1.2" min="0.8" max="4" step="0.1"></label>
+        <label data-only="bin">Colour <input type="color" id="color" value="#3a6ea5"></label>
       </fieldset>
 
       <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF</button></div>
@@ -88,11 +97,12 @@
       <details class="tips" open>
         <summary>Printing tips</summary>
         <ul>
-          <li><b>Orientation:</b> print as exported, foot on the bed, open top up, no supports. The lip's underside is a 45 degree slope and the magnet pockets are short bridges.</li>
+          <li data-only="bin"><b>Orientation:</b> print as exported, foot on the bed, open top up, no supports. The lip's underside is a 45 degree slope and the magnet pockets are short bridges.</li>
           <li><b>Settings:</b> 0.4 mm nozzle, 0.2 mm layers, <b>3 walls</b> (the 1.2 mm wall is exactly three lines), 10-15% infill for the solid floor. Print the first bin alone and test it in a baseplate before you print a batch.</li>
-          <li><b>Fit:</b> the foot follows the Gridfinity standard (41.5 mm, stepped), so it drops into any standard baseplate. Printers differ by a few hundredths of a millimetre, so if it is tight, calibrate your flow and horizontal expansion; do not change the model.</li>
-          <li><b>Stacking lip:</b> built from the foot's own profile with 0.25 mm of clearance and a printable underside. It is not copied from the official files, so check one stacks on another before you sell a set.</li>
-          <li><b>Magnets:</b> 6 x 2 mm discs, four per grid cell. Glue them in all the same way round (check with a spare). Keep neodymium magnets away from small children, pacemakers and bank cards.</li>
+          <li data-only="bin"><b>Fit:</b> the foot follows the Gridfinity standard (41.5 mm, stepped), so it drops into any standard baseplate. Printers differ by a few hundredths of a millimetre, so if it is tight, calibrate your flow and horizontal expansion; do not change the model.</li>
+          <li data-only="bin"><b>Stacking lip:</b> built from the foot's own profile with 0.25 mm of clearance and a printable underside. It is not copied from the official files, so check one stacks on another before you sell a set.</li>
+          <li><b>Magnets:</b> 6 x 2 mm discs, four per grid cell, in the bin's feet and in the baseplate pockets. Glue them in all the same way round (check with a spare). Keep neodymium magnets away from small children, pacemakers and bank cards.</li>
+          <li data-only="plate" hidden><b>Baseplates:</b> print flat, top up. A baseplate pocket is the same shape as the stacking lip, so bins fit by the same numbers. Print one cell first and drop a bin in it: the foot should sit down with a little play and no wobble. Glue the plate to a board or use double-sided tape so it does not slide.</li>
           <li><b>Selling it:</b> Gridfinity is an open system and its dimensions are free to use. Check the licence of any bin or baseplate files you did not make yourself. To print a set, send several bins to the Plate Nester.</li>
         </ul>
       </details>

@@ -106,8 +106,8 @@
   },
   {
     "id": "gridfinity",
-    "title": "Gridfinity Bins",
-    "description": "Storage bins for the Gridfinity system: any size in grid units, compartments, scoop, stacking lip and magnet holes. STL and 3MF.",
+    "title": "Gridfinity Bins and Baseplates",
+    "description": "Storage bins and baseplates for the Gridfinity system: any size in grid units, compartments, scoop, stacking lip and magnet holes. STL and 3MF.",
     "status": "live",
     "path": "gridfinity/"
   },

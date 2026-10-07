@@ -1,7 +1,7 @@
 // Copyright (c) 2025 cmutnik
 import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
-import { buildBin } from './geometry.js';
+import { buildBin, buildBaseplate, GRID } from './geometry.js';
 
 const $ = id => document.getElementById(id);
 const int = id => parseInt($(id).value, 10);
@@ -16,7 +16,17 @@ function showError(msg) {
 }
 function rebuild() { clearTimeout(timer); $('status').textContent = 'Working...'; timer = setTimeout(build, 150); }
 
+function syncMode() {
+  const plate = $('mode').value === 'plate';
+  document.querySelectorAll('[data-only]').forEach(el => { el.hidden = el.dataset.only !== (plate ? 'plate' : 'bin'); });
+  for (const id of ['ux', 'uy']) $(id).max = plate ? 12 : 8;
+  document.querySelectorAll('[data-view="underside"]').forEach(b => { b.textContent = plate ? 'Underside' : 'Base'; });
+  $('download3mf').textContent = 'Download 3MF';
+}
+
 function build() {
+  syncMode();
+  if ($('mode').value === 'plate') return buildPlate();
   const p = {
     units: [int('ux'), int('uy')], height: int('uh'), compartments: [int('cx'), int('cy')], scoop: num('scoop'),
     lip: $('lip').checked, magnets: $('magnets').checked, wall: num('wall'), floor: num('floor'), divider: num('divider'), color: $('color').value,
@@ -37,6 +47,26 @@ function build() {
   $('status').textContent = '';
 }
 
+function buildPlate() {
+  const p = { units: [int('ux'), int('uy')], floor: num('floor'), magnets: $('magnets').checked, color: '#8a8f98' };
+  if ([...p.units, p.floor].some(Number.isNaN)) return;
+  let res;
+  try { res = buildBaseplate(p); } catch (e) { showError(e.message); $('status').textContent = ''; return; }
+  showError('');
+  model = res.group;
+  viewer.setObject(model);
+  lastInfo = res.info;
+  if (first) { first = false; viewer.resize(); }
+  viewer.setView(view, lastInfo);
+  const i = res.info, bed = num('bed'), warnings = [...i.warnings];
+  $('info').textContent = `${i.units[0]} x ${i.units[1]} cells  |  ${i.width.toFixed(0)} x ${i.depth.toFixed(0)} x ${i.height.toFixed(1)} mm`;
+  $('stats').textContent = `${i.cells} cell${i.cells > 1 ? 's' : ''}  |  about ${i.grams.toFixed(0)} g of PLA`;
+  if (Math.max(i.width, i.depth) > bed && Math.min(i.width, i.depth) > bed) warnings.push(`This is ${i.width.toFixed(0)} x ${i.depth.toFixed(0)} mm and will not fit a ${bed} mm bed. Print it as several smaller plates: up to ${Math.floor(bed / GRID)} cells each way fits.`);
+  else if (Math.max(i.width, i.depth) > bed) warnings.push(`The long side is ${Math.max(i.width, i.depth).toFixed(0)} mm, longer than your ${bed} mm bed. It fits only if you print it diagonally; better to split it into plates of up to ${Math.floor(bed / GRID)} cells.`);
+  $('warnings').replaceChildren(...warnings.map(t => Object.assign(document.createElement('div'), { textContent: t })));
+  $('status').textContent = '';
+}
+
 $('preset').addEventListener('change', () => {
   if (!$('preset').value) return;
   const [x, y, h] = $('preset').value.split(',');
@@ -50,8 +80,8 @@ document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click'
   document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('active', x === b));
   viewer.setView(view, lastInfo);
 }));
-const name = () => `gridfinity-${int('ux')}x${int('uy')}x${int('uh')}${$('cx').value * $('cy').value > 1 ? `-${$('cx').value}x${$('cy').value}` : ''}`;
+const name = () => $('mode').value === 'plate' ? `gridfinity-baseplate-${int('ux')}x${int('uy')}` : `gridfinity-${int('ux')}x${int('uy')}x${int('uh')}${$('cx').value * $('cy').value > 1 ? `-${$('cx').value}x${$('cy').value}` : ''}`;
 $('download').addEventListener('click', () => downloadBlob(exportSTL(model), `${name()}.stl`));
-$('download3mf').addEventListener('click', () => downloadBlob(export3MF(model, { title: 'Gridfinity bin' }), `${name()}.3mf`));
+$('download3mf').addEventListener('click', () => downloadBlob(export3MF(model, { title: $('mode').value === 'plate' ? 'Gridfinity baseplate' : 'Gridfinity bin' }), `${name()}.3mf`));
 
 build();

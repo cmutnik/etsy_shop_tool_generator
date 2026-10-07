@@ -159,3 +159,54 @@ export function buildBin(o) {
     },
   };
 }
+
+/**
+ * A baseplate: a plate of u x v cells (42 mm each), every cell a pocket that a bin's foot drops into.
+ * A pocket is the stacking lip's inner profile (a foot with 0.25 mm of clearance), so a bin's foot fits a baseplate by the same numbers it fits the lip of the bin below.
+ * @param {object} o  units: [x, y]; floor (mm of plate under the pockets); magnets (bool: 6.5 x 2.4 mm holes, four a cell, in the pocket floor); color
+ * @returns {{ group: THREE.Group, info: object }}
+ */
+export function buildBaseplate(o) {
+  const [ux, uy] = o.units;
+  if (![ux, uy].every(v => Number.isInteger(v) && v >= 1 && v <= 12)) throw new Error('A baseplate is 1 to 12 cells each way.');
+  const depth = LIP_PENETRATION, magnets = !!o.magnets, floorMin = magnets ? MAGNET.depth + 0.8 : 0.6;
+  let floor = o.floor ?? 1.2;
+  const warnings = [];
+  if (!(floor >= 0.6 && floor <= 8)) throw new Error('The floor must be 0.6 to 8 mm thick.');
+  if (magnets && floor < floorMin) { floor = floorMin; warnings.push(`With magnet holes the plate under the pockets is at least ${floorMin.toFixed(1)} mm (the holes are ${MAGNET.depth} mm deep and 0.8 mm must stay under them), so the floor was raised to that.`); }
+  const W = ux * GRID, D = uy * GRID, H = depth + floor, hw = W / 2, hh = D / 2, cell = GRID / 2;
+  const outline = roundedRectRing(-hw, -hh, hw, hh, [R_OUT + 0.25, R_OUT + 0.25, R_OUT + 0.25, R_OUT + 0.25], SEG);
+  const prof = lipProfile(1.2).slice(0, 4);                                  // the pocket: down from the top, ending on the pocket floor
+  const m = new Mesh3(), centres = [];
+  for (let i = 0; i < ux; i++) for (let j = 0; j < uy; j++) centres.push([(i - (ux - 1) / 2) * GRID, (j - (uy - 1) / 2) * GRID]);
+
+  m.band(m.ring(outline, 0), m.ring(outline, H));
+  m.cap(outline, 0, false);
+  const pocketTops = centres.map(([cx, cy]) => ringAt(cell - 0.25 + 0.25 * 0, cell - 0.25 + 0.25 * 0, prof[0][1]).map(p => [p[0] + cx, p[1] + cy]));
+  m.cap(outline, H, true, pocketTops);
+  for (const [cx, cy] of centres) {
+    const levels = prof.map(([d, s]) => ({ z: H - d, ring: ringAt(FOOTPRINT / 2, FOOTPRINT / 2, s) }));
+    const ids = levels.map(l => m.ring(l.ring, l.z, cx, cy));
+    for (let k = 0; k + 1 < ids.length; k++) m.band(ids[k + 1], ids[k], true);   // pocket walls face into the pocket
+    const holes = [];
+    if (magnets) {
+      for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+        const c = [sx * MAGNET.offset, sy * MAGNET.offset], pts = Array.from({ length: 32 }, (_, i) => [c[0] + (MAGNET.diameter / 2) * Math.cos((i / 32) * 2 * Math.PI), c[1] + (MAGNET.diameter / 2) * Math.sin((i / 32) * 2 * Math.PI)]);
+        holes.push(pts);
+        m.band(m.ring(pts, floor - MAGNET.depth, cx, cy), m.ring(pts, floor, cx, cy), true);
+        m.cap(pts, floor - MAGNET.depth, true, [], cx, cy);
+      }
+    }
+    m.cap(levels[levels.length - 1].ring, floor, true, holes, cx, cy);
+  }
+  const mesh = m.mesh(o.color || '#8a8f98', 'baseplate'), group = new THREE.Group();
+  group.add(mesh);
+  const p = mesh.geometry.attributes.position, ix = mesh.geometry.index;
+  let volume = 0;
+  for (let t = 0; t < ix.count; t += 3) {
+    const a = ix.getX(t), b = ix.getX(t + 1), c = ix.getX(t + 2);
+    volume += (p.getX(a) * (p.getY(b) * p.getZ(c) - p.getZ(b) * p.getY(c)) - p.getY(a) * (p.getX(b) * p.getZ(c) - p.getZ(b) * p.getX(c)) + p.getZ(a) * (p.getX(b) * p.getY(c) - p.getY(b) * p.getX(c))) / 6;
+  }
+  if (magnets) warnings.push(`Magnet holes are ${MAGNET.diameter} x ${MAGNET.depth} mm, four to a cell, in the pocket floor. Press 6 x 2 mm magnets in and glue them, all the same way round (and opposite to the ones in your bins, so they attract).`);
+  return { group, info: { width: W, depth: D, height: H, units: [ux, uy], cells: ux * uy, floor, volume, grams: (volume / 1000) * 1.24, pocketDepth: depth, warnings } };
+}

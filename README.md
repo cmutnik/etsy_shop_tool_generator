@@ -21,7 +21,7 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [Listing Photos](tools/listing-photos/) | live | Turn a 3D file into product photos: angle, backdrop, colour and finish, PNGs at Etsy sizes (one, or a set of six) |
 | [Mesh Checker](tools/mesh-checker/) | live | Check a model before it prints: holes, inside-out faces, bed fit, overhangs, thin walls; can repair it |
 | [Plate Nester](tools/plate-nester/) | live | Arrange many models on one or more print beds by their real outlines, with copies, spacing and turning (3MF per plate, colours and slots kept) |
-| [Gridfinity Bins](tools/gridfinity/) | live | Storage bins for the Gridfinity system: any size in grid units, compartments, scoop, stacking lip, magnet holes (STL, 3MF) |
+| [Gridfinity Bins and Baseplates](tools/gridfinity/) | live | Storage bins and baseplates for the Gridfinity system: any size in grid units, compartments, scoop, stacking lip, magnet holes (STL, 3MF) |
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
 | [Flexi Maker](tools/flexi-maker/) | live | Turn a model into an articulated, print-in-place flexi with chain-link (hook and loop) or ball-and-socket joints; keeps 3MF colours |
@@ -98,12 +98,13 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Output:** a 3MF per plate with one part per model part, colours kept and filament slots by colour, an STL of the plate, or all plates in a ZIP. The plate is centred so a slicer opens it in the middle.
 - Code in `shared/js/nest.js`, tested in `tests/nest.test.mjs`.
 
-### Gridfinity Bins
+### Gridfinity Bins and Baseplates
 
 - **Standard sizes:** 1-8 units each way (42 mm pitch, 41.5 mm bin) and 2-12 height units of 7 mm, with the standard stepped foot (0.8 mm chamfer, 1.8 mm straight, 2.15 mm chamfer) and 3.75 mm corners, so it fits any standard baseplate. Quick-start sizes included.
 - **Compartments and scoop:** 1-8 compartments each way with a divider thickness you set, and an optional curved scoop at the front of each.
 - **Stacking lip and magnets:** a lip built from the foot's own profile (0.25 mm clearance, 45 degree printable underside), and optional 6.5 x 2.4 mm magnet holes, four per cell.
 - **Numbers shown:** size in mm, compartment size and depth, and about how many grams of PLA it takes.
+- **Baseplates:** 1-12 cells each way, 42 mm a cell, every cell a pocket cut to the stacking lip's profile (so a bin's foot fits it by the same numbers, with 0.25 mm clearance all round), optional magnet holes in the pocket floor (the floor is raised to 3.2 mm to fit them), and a warning with the number of cells your printer's bed takes.
 - **Output:** STL or 3MF. Send several bins to the Plate Nester to print a set. Code in `tools/gridfinity/`, tested in `tests/gridfinity.test.mjs`.
 
 ### STL / 3MF Modifier

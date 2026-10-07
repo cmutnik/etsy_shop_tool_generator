@@ -118,3 +118,58 @@ test('exports an STL, and a large bin stays quick', () => {
   assert.ok(Date.now() - t0 < 4000, `${Date.now() - t0} ms`);
   r.group.children.slice(0, 3).forEach(m => assertWatertight(m, assert));
 });
+
+// ---------------- baseplates ----------------
+import { buildBaseplate } from '../tools/gridfinity/geometry.js';
+
+test('baseplates are watertight in every size and option, and are 42 mm a cell', () => {
+  for (const units of [[1, 1], [3, 2], [5, 5]]) for (const magnets of [false, true]) {
+    const r = buildBaseplate({ units, magnets, floor: 1.2 });
+    assert.equal(r.group.children.length, 1);
+    assertWatertight(r.group.children[0], assert);
+    const b = box(r.group);
+    assert.ok(Math.abs(b.max.x - b.min.x - units[0] * 42) < 1e-3 && Math.abs(b.max.y - b.min.y - units[1] * 42) < 1e-3);
+    assert.ok(Math.abs(b.min.z) < 1e-6 && Math.abs(b.max.z - r.info.height) < 1e-5);
+    assert.equal(r.info.cells, units[0] * units[1]);
+  }
+});
+
+test('plate height is the pocket depth plus the floor; magnets force a floor deep enough for their holes', () => {
+  const plain = buildBaseplate({ units: [2, 2], floor: 1.2 }), mag = buildBaseplate({ units: [2, 2], floor: 1.2, magnets: true });
+  assert.ok(Math.abs(plain.info.height - (3.5 + 1.2)) < 1e-9);
+  assert.ok(Math.abs(mag.info.floor - 3.2) < 1e-9 && Math.abs(mag.info.height - 6.7) < 1e-9);
+  assert.match(mag.info.warnings.join(' '), /raised/);
+  const hole = Math.PI * (MAGNET.diameter / 2) ** 2 * MAGNET.depth;
+  const same = buildBaseplate({ units: [2, 2], floor: 3.2 }), removed = vol(same.group) - vol(mag.group);
+  assert.ok(Math.abs(removed - 16 * hole) / (16 * hole) < 0.03, `${removed} vs ${16 * hole}`);
+});
+
+test('a bin\'s foot fits a baseplate pocket with at least 0.25 mm all round, at every height', () => {
+  const r = buildBaseplate({ units: [1, 1], floor: 1.2 }), p = r.group.children[0].geometry.attributes.position;
+  const floorZ = r.info.floor, reach = new Map();                            // pocket half-width at each height
+  for (let i = 0; i < p.count; i++) { const z = +p.getZ(i).toFixed(4); if (z >= floorZ - 1e-6 && Math.max(Math.abs(p.getX(i)), Math.abs(p.getY(i))) < 21 - 0.2) reach.set(z, Math.max(reach.get(z) || 0, Math.abs(p.getX(i)))); }
+  assert.ok(reach.size >= 4);
+  for (const [z, half] of reach) {
+    const h = z - floorZ, foot = FOOTPRINT / 2 - footInset(h);               // the foot with its bottom on the pocket floor
+    assert.ok(half - foot >= 0.25 - 1e-3, `at ${h.toFixed(2)} mm up: pocket ${half.toFixed(3)} vs foot ${foot.toFixed(3)}`);
+  }
+  const top = Math.max(...reach.keys());
+  assert.ok(Math.abs(top - (r.info.height)) < 1e-4, 'the pocket opens at the top of the plate');
+});
+
+test('the ridge between pockets is wide enough to print and is the same all over', () => {
+  const r = buildBaseplate({ units: [2, 1], floor: 1.2 });
+  const topX = new Set(); const p = r.group.children[0].geometry.attributes.position;
+  for (let i = 0; i < p.count; i++) if (Math.abs(p.getZ(i) - r.info.height) < 1e-6 && Math.abs(p.getX(i)) < 5) topX.add(+p.getX(i).toFixed(3));
+  const xs = [...topX].sort((a, b) => a - b), inner = xs;
+  assert.ok(inner.length >= 2);
+  const ridge = Math.min(...inner.filter(x => x > 0)) - Math.max(...inner.filter(x => x < 0));
+  assert.ok(ridge > 2.4 && ridge < 2.6, `ridge ${ridge}`);
+});
+
+test('bad baseplate settings are refused', () => {
+  assert.throws(() => buildBaseplate({ units: [0, 1] }), /1 to 12/);
+  assert.throws(() => buildBaseplate({ units: [13, 1] }), /1 to 12/);
+  assert.throws(() => buildBaseplate({ units: [1, 1], floor: 0.2 }), /floor/);
+  assert.ok(exportSTL(buildBaseplate({ units: [2, 2] }).group).size > 84);
+});
