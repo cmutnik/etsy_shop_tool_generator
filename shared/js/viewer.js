@@ -52,6 +52,8 @@ export function createViewer(container) {
       controls.update();
     },
     resize,
+    /** For tools that let the user click or drag things in the scene. */
+    camera, controls, dom: renderer.domElement,
   };
 }
 

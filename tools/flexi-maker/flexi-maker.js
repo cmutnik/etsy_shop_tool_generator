@@ -10,6 +10,7 @@ import { simplifyParts, SOFT_LIMIT, HARD_LIMIT } from './prepare.js';
 import { repairParts } from '../mesh-modifier/repair-groups.js';
 import { cutPositions } from './joints.js';
 import { makeTestStrip } from './test-strip.js';
+import { addCut, moveCut, removeCut, evenCuts, segmentLengths, dragValue, cutsToText, MIN_SEGMENT } from './cut-edit.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
@@ -20,6 +21,7 @@ let source = null;          // { name, fileName, parts, stats, include, colors, 
 let shown = null;           // { size, sizeObj } of what the preview shows
 let result = null;          // the flexi model, until something changes: { group, meta }
 let pose = null;            // the preview's bendable copy: { levels, joints, axis }
+let cutView = null;         // the cut planes in the preview, while they are showing: { group, planes, models, k, lo, hi, length, offsets }
 let framed = false, view = 'print', timer = null, busy = false, engineReady = false;
 
 const showError = msg => { $('error').hidden = !msg; $('error').textContent = msg || ''; };
@@ -96,7 +98,7 @@ function placed(parts, { rotate = [0, 0, 0], unit = num('unit'), scale = (num('s
 const customList = () => $('custom').value.split(/[,;\s]+/).map(parseFloat).filter(Number.isFinite);
 
 function refresh() { clearTimeout(timer); timer = setTimeout(draw, 120); invalidate(); }
-function invalidate() { result = null; pose = null; $('poseRow').hidden = true; $('pose').value = 0; $('poseOut').textContent = '0\u00b0'; $('downloadStl').disabled = $('download3mf').disabled = true; }
+function invalidate() { result = null; pose = null; cutView = null; $('poseRow').hidden = true; $('pose').value = 0; $('poseOut').textContent = '0\u00b0'; $('downloadStl').disabled = $('download3mf').disabled = true; }
 
 function draw() {
   if (!source) return;
@@ -109,6 +111,7 @@ function draw() {
   const { group } = buildGroup(xf.parts);
   const k = AXES.indexOf($('axis').value), lo = xf.min[k], hi = xf.max[k];
   const cuts = cutPositions(lo, hi, num('count'), customList().map(v => lo + v));
+  const planes = [];
   for (const c of cuts) {
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xd9480f, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
     const other = [0, 1, 2].filter(a => a !== k), centre = xf.min.map((v, a) => (v + xf.max[a]) / 2);
@@ -118,8 +121,12 @@ function draw() {
     const wide = other.map(a => (xf.max[a] - xf.min[a]) * 1.15 + 4);
     // the plane's local x, y map to world axes: z cut -> (x, y); x cut (turned about y) -> (z, y); y cut (turned about x) -> (x, z)
     plane.scale.set(...(k === 0 ? [wide[1], wide[0], 1] : [wide[0], wide[1], 1]));
+    plane.userData = { plane: true, index: planes.length };
+    planes.push(plane);
     group.add(plane);
   }
+  cutView = { group, planes, models: group.children.filter(c => !c.userData.plane), k, lo, hi, length: hi - lo, offsets: cuts.map(c => round(c - lo, 1)) };
+  drawCutList();
   viewer.setObject(group);
   const [w, d, h] = xf.size;
   shown = { size: xf.size, sizeObj: { width: w, depth: d, height: h } };
@@ -137,7 +144,124 @@ function draw() {
   showWarnings(warnings);
   $('status').textContent = source.fileName;
 }
+$('count').addEventListener('input', () => { $('custom').value = ''; });                // asking for a number of segments means even ones again
 $('controls').addEventListener('input', e => { if (!e.target.closest('#partList') && e.target.id !== 'file') refresh(); });
+
+// ---------- placing the cuts by hand ----------
+/** Make `list` (mm from the model's low end) the cuts: the box and the segment count follow, and an even list goes back to "even segments". */
+function setCuts(list) {
+  if (!cutView) return;
+  const { length } = cutView, even = evenCuts(length, list.length + 1);
+  $('custom').value = list.length === even.length && list.every((v, i) => Math.abs(v - even[i]) < 0.05) ? '' : cutsToText(list);
+  $('count').value = list.length + 1;
+  refresh();
+}
+function drawCutList(live = null) {
+  const box = $('cutBox');
+  if (!cutView) { box.hidden = true; return; }
+  const offs = live || cutView.offsets;
+  box.hidden = false;
+  $('cutList').replaceChildren(...offs.map((v, i) => {
+    const li = document.createElement('li'), label = document.createElement('span'), input = document.createElement('input'), rm = document.createElement('button');
+    label.textContent = `Cut ${i + 1}`;
+    input.type = 'number'; input.value = v; input.step = 0.5; input.min = MIN_SEGMENT; input.max = round(cutView.length - MIN_SEGMENT, 1); input.title = 'mm from the low end of the model, along the cut direction';
+    input.addEventListener('change', () => setCuts(moveCut(cutView.offsets, i, parseFloat(input.value), cutView.length)));
+    rm.type = 'button'; rm.textContent = '\u00d7'; rm.title = 'Remove this cut';
+    rm.addEventListener('click', () => setCuts(removeCut(cutView.offsets, i)));
+    li.append(label, input, rm);
+    return li;
+  }));
+  $('cutSegs').textContent = `Segments: ${segmentLengths(offs, cutView.length).join(' + ')} mm`;
+}
+$('addCut').addEventListener('click', () => {
+  if (!cutView) return;
+  const edges = [0, ...cutView.offsets, cutView.length];
+  let best = 0;
+  for (let i = 1; i < edges.length; i++) if (edges[i] - edges[i - 1] > edges[best + 1] - edges[best]) best = i - 1;
+  const r = addCut(cutView.offsets, (edges[best] + edges[best + 1]) / 2, cutView.length);
+  if (r.added) setCuts(r.list); else showError(r.reason);
+});
+$('evenCuts').addEventListener('click', () => { if (cutView) setCuts(evenCuts(cutView.length, cutView.offsets.length + 1)); });
+
+// Click the model to add a cut there; drag a cut plane along the model to move it; double-click a plane to remove it. Orbiting works as before.
+{
+  const dom = viewer.dom, ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  let drag = null, press = null, hover = null;
+  const pick = (e, objects) => {
+    const r = dom.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    viewer.camera.updateMatrixWorld();                                         // the render loop may not have run since the camera last moved
+    objects.forEach(o => o.updateMatrixWorld());
+    ray.setFromCamera(ndc, viewer.camera);
+    return ray.intersectObjects(objects, false);
+  };
+  const live = () => cutView && $('editCuts').checked && !result && !busy;
+  /** What is nearest under the pointer: a cut plane (grab it) or the model (add a cut there). A plane the model is in front of does not count. */
+  const nearest = e => { const h = pick(e, [...cutView.planes, ...cutView.models])[0]; return h ? { hit: h, plane: !!h.object.userData.plane } : null; };
+  const setHover = plane => {
+    if (hover === plane) return;
+    if (hover) hover.material.opacity = 0.35;
+    hover = plane;
+    if (hover) hover.material.opacity = 0.7;
+    dom.style.cursor = plane ? 'grab' : '';
+  };
+  /** One mm along the cut direction, as a vector in screen pixels, at the plane's centre. */
+  const axisPixels = plane => {
+    const r = dom.getBoundingClientRect(), a = plane.position.clone(), b = a.clone();
+    b.setComponent(cutView.k, b.getComponent(cutView.k) + 1);
+    const px = v => { const p = v.clone().project(viewer.camera); return { x: (p.x * r.width) / 2, y: (-p.y * r.height) / 2 }; };
+    const pa = px(a), pb = px(b);
+    return { x: pb.x - pa.x, y: pb.y - pa.y };
+  };
+  dom.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !live()) return;
+    const n = nearest(e), hit = n && n.plane ? n.hit : null;
+    if (hit) {
+      const i = hit.object.userData.index;
+      drag = { i, x: e.clientX, y: e.clientY, start: cutView.offsets[i], axis: axisPixels(hit.object), list: cutView.offsets.slice() };
+      viewer.controls.enabled = false;
+      try { dom.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer: carry on without capture */ }
+      dom.style.cursor = 'grabbing';
+    } else press = { x: e.clientX, y: e.clientY };
+  });
+  dom.addEventListener('pointermove', e => {
+    if (!live()) return;
+    if (drag) {
+      const v = dragValue(drag.start, { x: e.clientX - drag.x, y: e.clientY - drag.y }, drag.axis);
+      drag.list = moveCut(cutView.offsets, drag.i, v, cutView.length);
+      cutView.planes[drag.i].position.setComponent(cutView.k, cutView.lo + drag.list[drag.i]);
+      drawCutList(drag.list);
+      $('status').textContent = `Cut ${drag.i + 1} at ${drag.list[drag.i]} mm`;
+    } else if (!(e.buttons & 1)) { const n = nearest(e); setHover(n && n.plane ? n.hit.object : null); }
+  });
+  const finish = e => {
+    if (drag) {
+      const list = drag.list; drag = null;
+      viewer.controls.enabled = true;
+      dom.style.cursor = hover ? 'grab' : '';
+      try { dom.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+      setCuts(list);
+    }
+  };
+  dom.addEventListener('pointerup', e => {
+    if (drag) return finish(e);
+    if (!press) return;
+    const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y); press = null;
+    if (moved > 4 || !live()) return;                                          // that was an orbit, not a click
+    const n = nearest(e);
+    if (!n || n.plane) return;
+    const hit = n.hit;
+    showError('');
+    const r = addCut(cutView.offsets, hit.point.getComponent(cutView.k) - cutView.lo, cutView.length);
+    if (r.added) setCuts(r.list); else showError(r.reason);
+  });
+  dom.addEventListener('pointercancel', finish);
+  dom.addEventListener('dblclick', e => {
+    if (!live()) return;
+    const n = nearest(e);
+    if (n && n.plane) setCuts(removeCut(cutView.offsets, n.hit.object.userData.index));
+  });
+}
 
 // ---------- fix the model: repair, reduce ----------
 const snapshot = () => ({ parts: source.parts, stats: source.stats, include: source.include, colors: source.colors, slots: source.slots });

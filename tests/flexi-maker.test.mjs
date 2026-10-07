@@ -323,3 +323,57 @@ test('test strip can be stood upright, and a bar too small for the joint says so
   assert.ok(b.size[2] > 60 && Math.abs(b.min[2]) < 1e-4);
   await assert.rejects(() => makeTestStrip({ joint: 'ball', section: 5 }), /No joint fits/);
 }, { timeout: 120000 });
+
+// ---------------- editing cuts by hand ----------------
+const ce = await import('../tools/flexi-maker/cut-edit.js');
+
+test('cut-edit: addCut snaps, keeps the list sorted and refuses spots without room', () => {
+  const a = ce.addCut([], 30.2, 100);
+  assert.deepEqual(a, { list: [30], added: true, reason: '' });
+  assert.deepEqual(ce.addCut([30], 70.3, 100).list, [30, 70.5]);
+  assert.deepEqual(ce.addCut([30, 70], 10, 100).list, [10, 30, 70], 'kept sorted');
+  const near = ce.addCut([30], 33, 100);
+  assert.equal(near.added, false); assert.deepEqual(near.list, [30]); assert.match(near.reason, /another cut/);
+  assert.match(ce.addCut([], 2, 100).reason, /each side/);
+  assert.match(ce.addCut([], 99, 100).reason, /each side/);
+  assert.equal(ce.addCut([], 50, 100).added, true);
+});
+
+test('cut-edit: moveCut is held between its neighbours and the ends by the minimum segment length', () => {
+  const l = [20, 50, 80];
+  assert.deepEqual(ce.moveCut(l, 1, 60, 100), [20, 60, 80]);
+  assert.deepEqual(ce.moveCut(l, 1, 200, 100), [20, 74, 80], 'cannot pass the next cut');
+  assert.deepEqual(ce.moveCut(l, 1, -50, 100), [20, 26, 80], 'cannot pass the previous cut');
+  assert.deepEqual(ce.moveCut(l, 0, -10, 100), [6, 50, 80], 'cannot reach the end');
+  assert.deepEqual(ce.moveCut(l, 2, 500, 100), [20, 50, 94]);
+  assert.deepEqual(l, [20, 50, 80], 'the input is never changed');
+  assert.deepEqual(ce.moveCut([10, 14], 0, 12, 24), [8, 14], 'held 6 mm short of the next cut');
+});
+
+test('cut-edit: removeCut, evenCuts, segmentLengths and normalise', () => {
+  assert.deepEqual(ce.removeCut([10, 20, 30], 1), [10, 30]);
+  assert.deepEqual(ce.evenCuts(100, 4), [25, 50, 75]);
+  assert.deepEqual(ce.evenCuts(100, 1), []);
+  assert.deepEqual(ce.evenCuts(10, 3), [3.3, 6.7]);
+  assert.deepEqual(ce.segmentLengths([25, 50, 75], 100), [25, 25, 25, 25]);
+  assert.deepEqual(ce.segmentLengths([], 80), [80]);
+  assert.deepEqual(ce.normalise([70, 30, 30.04, 2, 99, 33, NaN], 100), [30, 70]);
+  assert.deepEqual(ce.normalise([10, 12, 40], 100), [10, 40], 'a cut too close to the one before is dropped');
+});
+
+test('cut-edit: dragValue follows the cut direction on screen, and ignores a drag across it', () => {
+  const axis = { x: 0, y: -4 };                                                // up the screen: 4 px per mm
+  assert.equal(ce.dragValue(50, { x: 0, y: -40 }, axis), 60);
+  assert.equal(ce.dragValue(50, { x: 0, y: 20 }, axis), 45);
+  assert.equal(ce.dragValue(50, { x: 80, y: 0 }, axis), 50);
+  const diag = { x: 3, y: -3 };
+  assert.ok(Math.abs(ce.dragValue(10, { x: 6, y: -6 }, diag) - 12) < 1e-9);
+  assert.equal(ce.dragValue(10, { x: 5, y: 5 }, { x: 0, y: 0 }), 10, 'an axis pointing at the camera cannot be dragged');
+});
+
+test('cut-edit: the text form round-trips', () => {
+  assert.equal(ce.cutsToText([30, 55.04, 80]), '30, 55, 80');
+  assert.deepEqual(ce.textToCuts('30, 55;80  x'), [30, 55, 80]);
+  assert.deepEqual(ce.textToCuts(''), []);
+  assert.deepEqual(ce.textToCuts(ce.cutsToText([12.3, 45.6])), [12.3, 45.6]);
+});
