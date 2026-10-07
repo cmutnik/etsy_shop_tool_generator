@@ -377,3 +377,219 @@ test('cut-edit: the text form round-trips', () => {
   assert.deepEqual(ce.textToCuts(''), []);
   assert.deepEqual(ce.textToCuts(ce.cutsToText([12.3, 45.6])), [12.3, 45.6]);
 });
+
+// ---------------- cuts in any direction ----------------
+const { makeFlexiCuts, joinReach, roomAround: roomAroundImport } = await import('../tools/flexi-maker/multi.js');
+const { fromManifold } = await import('../tools/mesh-modifier/boolean3d.js');
+const cp = await import('../tools/flexi-maker/cut-plane.js');
+
+/** One closed part that is several boxes joined (an L, a T...). */
+async function joined(boxes, name = 'Body', color = null) {
+  const w = await loadManifold(), ms = boxes.map(b => toManifold(w, box(...b))), u = w.Manifold.union(ms), part = fromManifold(u, { name, color });
+  [...ms, u].forEach(m => m.delete());
+  return part;
+}
+async function overlapVolume(a, b) {
+  const w = await loadManifold(), ma = a.map(p => toManifold(w, p)), mb = b.map(p => toManifold(w, p));
+  let v = 0;
+  for (const x of ma) for (const y of mb) { const i = x.intersect(y); v = Math.max(v, i.volume()); i.delete(); }
+  [...ma, ...mb].forEach(m => m.delete());
+  return v;
+}
+const piece = (r, id) => r.parts.filter(p => p.seg === id);
+const cut = (axis, point, tilt = [0, 0], anchor = null) => ({ axis, tilt, point, ...(anchor ? { anchor } : {}) });
+
+test('an L-shaped body cut across z and then across x: three closed pieces in a tree, none touching', async () => {
+  const L = await joined([[-10, -10, 0, 10, 10, 80], [10, -10, 60, 90, 10, 80]]);       // an upright with an arm going out of its top
+  const r = await makeFlexiCuts([L], [cut('z', [0, 0, 30], [0, 0], [0, 0, 10]), cut('x', [55, 0, 70], [0, 0], [40, 0, 70])], { joint: 'ball', bend: 20 });
+  assert.equal(r.joints.length, 2);
+  assert.deepEqual(r.joints.map(j => [j.parent, j.child]), [[0, 1], [1, 2]], 'the second cut works on the piece the first made (it holds the arm)');
+  assert.deepEqual(r.applied, [{ cut: 0, piece: 0 }, { cut: 1, piece: 1 }]);
+  assert.deepEqual([...new Set(r.parts.map(p => p.seg))], [0, 1, 2]);
+  assert.deepEqual(r.parts.map(p => p.name), ['Segment 1', 'Segment 2', 'Segment 3']);
+  for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
+  assert.ok(await overlapVolume(piece(r, 0), piece(r, 1)) < 1e-6 && await overlapVolume(piece(r, 1), piece(r, 2)) < 1e-6, 'neighbouring pieces do not touch');
+  // the second joint's pivot is on its own plane (x = 55) and its axis is the frame's x, which for an x cut is some direction across the arm
+  assert.ok(Math.abs(r.joints[1].pivot[0] - 55) < 8, `pivot ${r.joints[1].pivot}`);
+  assert.ok(Math.abs(Math.hypot(...r.joints[1].axis) - 1) < 1e-9);
+  assert.ok(r.bend > 5);
+}, { timeout: 120000 });
+
+test('a tilted cut: the two pieces are closed, separate, and the plane really is tilted', async () => {
+  const post = await joined([[-12, -12, 0, 12, 12, 100]]);
+  const tilt = 25, r = await makeFlexiCuts([post], [cut('z', [0, 0, 50], [tilt, 0])], { joint: 'ball', bend: 20 });
+  const [lo, hi] = [piece(r, 0), piece(r, 1)];
+  for (const p of [...lo, ...hi]) assert.equal(partStats(p).openEdges, 0);
+  assert.ok(await overlapVolume(lo, hi) < 1e-6);
+  // a plane tilted 25 degrees about x: the lower piece reaches higher on one side (y) than the other
+  const topAt = (parts, side) => Math.max(...parts.flatMap(p => { const v = []; for (let i = 0; i < p.positions.length; i += 3) if (Math.sign(p.positions[i + 1]) === side && Math.abs(p.positions[i + 1]) > 8) v.push(p.positions[i + 2]); return v; }));
+  const dz = topAt(lo, -1) - topAt(lo, 1);
+  assert.ok(Math.abs(Math.abs(dz) - 2 * 10 * Math.tan((tilt * Math.PI) / 180)) < 4, `the cut rises ${dz.toFixed(1)} mm across 20 mm`);
+  // the joint sits on the tilted plane, and bends about an axis lying in it
+  const j = r.joints[0], n = cp.normalOf('z', [tilt, 0]);
+  assert.ok(Math.abs(cp.planeDistance(j.pivot, [0, 0, 50], n)) < 8, `pivot ${j.pivot}`);
+  assert.ok(Math.abs(j.axis.reduce((s, v, i) => s + v * n[i], 0)) < 1e-9, 'the bend axis is perpendicular to the cut normal');
+  // tilt the upper piece about the joint by 80 % of the reported bend, either way: still no contact
+  const w = await loadManifold(), up = hi.map(p => toManifold(w, p)), dn = lo.map(p => toManifold(w, p));
+  const turn = (m, axis, deg, at) => {                     // rotate m about the line through `at` along `axis` (Rodrigues, as a column-major 4x4)
+    const t = (deg * Math.PI) / 180, c = Math.cos(t), s2 = Math.sin(t), [x, y, z] = axis, C = 1 - c;
+    const R = [[c + x * x * C, x * y * C - z * s2, x * z * C + y * s2], [y * x * C + z * s2, c + y * y * C, y * z * C - x * s2], [z * x * C - y * s2, z * y * C + x * s2, c + z * z * C]];
+    const tr = [0, 1, 2].map(i => at[i] - R[i][0] * at[0] - R[i][1] * at[1] - R[i][2] * at[2]);
+    return m.transform([R[0][0], R[1][0], R[2][0], 0, R[0][1], R[1][1], R[2][1], 0, R[0][2], R[1][2], R[2][2], 0, tr[0], tr[1], tr[2], 1]);
+  };
+  for (const sign of [1, -1]) {
+    let worst = 0;
+    for (const u of up) for (const d of dn) { const mv = turn(u, j.axis, sign * 0.8 * r.bend, j.pivot), i = mv.intersect(d); worst = Math.max(worst, i.volume()); mv.delete(); i.delete(); }
+    assert.ok(worst < 1e-6, `tilted ${sign * 0.8 * r.bend} degrees about the joint, the pieces overlap by ${worst}`);
+  }
+  [...up, ...dn].forEach(m => m.delete());
+}, { timeout: 120000 });
+
+test('cuts too close together are refused (no room for a joint), and ones further apart work', async () => {
+  const post = await joined([[-15, -15, 0, 15, 15, 120]]);
+  const near = [cut('z', [0, 0, 50], [0, 0], [0, 0, 10]), cut('z', [0, 0, 56], [0, 0], [0, 0, 100])];
+  await assert.rejects(() => makeFlexiCuts([post], near, { joint: 'ball' }), /Cut 1: No joint fits/, 'two cuts 6 mm apart leave no room for either joint');
+  const ok = await makeFlexiCuts([post], [cut('z', [0, 0, 40]), cut('z', [0, 0, 85], [0, 0], [0, 0, 100])], { joint: 'ball' });
+  assert.equal(ok.joints.length, 2);
+  assert.deepEqual(ok.joints.map(j => [j.parent, j.child]), [[0, 1], [1, 2]]);
+  assert.ok(joinReach({ half: 8, extent: 10, radius: 6 }) > joinReach({ half: 3, extent: 4, radius: 2 }));
+}, { timeout: 120000 });
+
+test('each cut works on the piece its anchor is in: cuts on the two sides of an earlier cut make a tree, not a chain', async () => {
+  const post = await joined([[-15, -15, 0, 15, 15, 140]]);
+  const r = await makeFlexiCuts([post], [
+    cut('z', [0, 0, 70]),
+    cut('z', [0, 0, 25], [0, 0], [0, 0, 20]),                  // across the lower piece
+    cut('z', [0, 0, 115], [0, 0], [0, 0, 120]),                // across the upper piece
+  ], { joint: 'ball' });
+  assert.deepEqual(r.joints.map(j => [j.parent, j.child]), [[0, 1], [0, 2], [1, 3]], 'the second and third cut each split a different piece');
+  assert.equal(new Set(r.parts.map(p => p.seg)).size, 4);
+  for (const p of r.parts) assert.equal(partStats(p).openEdges, 0);
+  // numbering follows the order the cuts were made; pieces 0 and 2 are the two halves of the lower part
+  const zTop = id => Math.max(...piece(r, id).flatMap(p => Array.from({ length: p.positions.length / 3 }, (_, i) => p.positions[i * 3 + 2])));
+  assert.ok(zTop(2) > zTop(0) - 1, 'piece 3 is the upper part of the lower half');
+}, { timeout: 120000 });
+
+test('a cut across the middle of an earlier joint is refused even when it is another axis', async () => {
+  const post = await joined([[-15, -15, 0, 15, 15, 140]]);
+  await assert.rejects(() => makeFlexiCuts([post], [cut('z', [0, 0, 70]), cut('x', [0, 0, 20], [0, 0], [0, 0, 20])], { joint: 'ball' }), /Cut 2 passes 0\.0 mm from the joint of cut 1/);
+}, { timeout: 120000 });
+
+test('a cut with no anchor works on the piece the plane crosses the most', async () => {
+  const body = await joined([[-10, -10, 0, 10, 10, 100]]);
+  const r = await makeFlexiCuts([body], [cut('z', [0, 0, 50]), cut('z', [0, 0, 20])], { joint: 'ball' });
+  assert.deepEqual(r.applied, [{ cut: 0, piece: 0 }, { cut: 1, piece: 0 }]);
+}, { timeout: 120000 });
+
+test('cuts along one axis with no tilt give the same pieces from the general engine as from the original', async () => {
+  const bar = [box(-10, -10, 0, 0, 10, 100, '#CC0000', 'Red'), box(0, -10, 0, 10, 10, 100, '#0000CC', 'Blue')];
+  const a = await makeFlexi(bar, { joint: 'ball', axis: 'z', count: 2, bend: 20 });
+  const b = await makeFlexiCuts(bar, [cut('z', [0, 0, 50])], { joint: 'ball', bend: 20 });
+  assert.deepEqual(b.parts.map(p => p.name).sort(), a.parts.map(p => p.name).sort());
+  assert.deepEqual([...new Set(b.parts.map(p => p.color))].sort(), ['#0000CC', '#CC0000']);
+  assert.equal(b.parts.length, a.parts.length);
+  assert.ok(Math.abs(b.bend - a.bend) < 1e-6);
+}, { timeout: 120000 });
+
+test('bad cuts say what is wrong', async () => {
+  const post = await joined([[-10, -10, 0, 10, 10, 60]]);
+  await assert.rejects(() => makeFlexiCuts([post], [], {}), /at least one/);
+  await assert.rejects(() => makeFlexiCuts([post], [cut('z', [0, 0, 300])], { joint: 'ball' }), /does not cross|Cut 1/);
+}, { timeout: 120000 });
+
+// ---------------- editing cuts with their own axis and tilt ----------------
+const bnd = { min: [-20, -10, 0], max: [60, 10, 100] };
+const zc = (pos, extra = {}) => ({ axis: 'z', tilt: [0, 0], point: [0, 0, pos], anchor: null, ...extra });
+
+test('cut-edit: cutsFromOffsets and offsetsOf round-trip, and the cuts pass through the middle of the model', () => {
+  const cuts = ce.cutsFromOffsets([25, 50, 75], 'z', bnd);
+  assert.deepEqual(cuts.map(c => c.point), [[20, 0, 25], [20, 0, 50], [20, 0, 75]]);
+  assert.deepEqual(ce.offsetsOf(cuts, bnd), [25, 50, 75]);
+  assert.deepEqual(ce.cutsFromOffsets([10], 'x', bnd)[0].point, [-10, 0, 50]);
+  assert.deepEqual(ce.offsetsOf(ce.cutsFromOffsets([10], 'x', bnd), bnd), [10]);
+});
+
+test('cut-edit: addCutAt keeps order of placing, snaps, and only refuses a parallel cut that is too near', () => {
+  let r = ce.addCutAt([], zc(40.3), bnd);
+  assert.equal(r.added, true);
+  assert.equal(r.cuts[0].point[2], 40.5);
+  const x = { axis: 'x', tilt: [0, 0], point: [0, 0, 40.5], anchor: [1, 2, 3] };
+  r = ce.addCutAt(r.cuts, x, bnd);
+  assert.equal(r.added, true, 'a cut along another axis may cross the first');
+  assert.deepEqual(r.cuts.map(c => c.axis), ['z', 'x'], 'kept in the order placed');
+  const near = ce.addCutAt(r.cuts, zc(43), bnd);
+  assert.equal(near.added, false); assert.match(near.reason, /same direction/);
+  const tilted = ce.addCutAt(r.cuts, zc(43, { tilt: [20, 0] }), bnd);
+  assert.equal(tilted.added, true, 'a tilted plane is not parallel to the first, so it may be near');
+  assert.match(ce.addCutAt([], zc(3), bnd).reason, /each side/);
+  assert.match(ce.addCutAt([], { axis: 'x', tilt: [0, 0], point: [59, 0, 0] }, bnd).reason, /each side/, 'the x range is -20..60');
+});
+
+test('cut-edit: moveCutTo clamps to the ends and to parallel neighbours only', () => {
+  const cuts = [zc(30), zc(60), { axis: 'x', tilt: [0, 0], point: [0, 0, 45] }];
+  assert.equal(ce.moveCutTo(cuts, 0, 200, bnd)[0].point[2], 54, 'cannot pass the parallel cut at 60');
+  assert.equal(ce.moveCutTo(cuts, 1, 0, bnd)[1].point[2], 36, 'nor the one at 30');
+  assert.equal(ce.moveCutTo(cuts, 0, -50, bnd)[0].point[2], 6, 'nor the end');
+  assert.equal(ce.moveCutTo(cuts, 2, -10, bnd)[2].point[0], -10, 'the x cut is free of the z cuts and moves along x');
+  assert.deepEqual(cuts[0].point, [0, 0, 30], 'the input is never changed');
+});
+
+test('cut-edit: tilts are clamped, axis changes stand the plane up straight, drag moves along the normal, remove drops one', () => {
+  const cuts = [zc(40), zc(70)];
+  assert.deepEqual(ce.tiltCutTo(cuts, 0, 20, -90)[0].tilt, [20, -60]);
+  assert.deepEqual(ce.tiltCutTo(cuts, 0, NaN, 5)[0].tilt, [0, 5]);
+  assert.deepEqual(ce.tiltCutTo(cuts, 1, 10, 10)[0].tilt, [0, 0], 'only the chosen cut changes');
+  const tilted = ce.tiltCutTo(cuts, 0, 30, 0), flat = ce.setCutAxis(tilted, 0, 'x');
+  assert.equal(flat[0].axis, 'x'); assert.deepEqual(flat[0].tilt, [0, 0]); assert.deepEqual(flat[0].point, [0, 0, 40]);
+  const dragged = ce.dragCut(tilted, 0, 10, bnd);                              // 10 mm along a normal that is 30 degrees off z
+  assert.ok(Math.abs(dragged[0].point[2] - (40 + 10 * Math.cos(Math.PI / 6))) < 0.3, `${dragged[0].point[2]}`);
+  assert.ok(Math.abs(dragged[0].point[1] - 0) > 1, 'it moved sideways too, along the normal');
+  assert.deepEqual(ce.removeCutAt(cuts, 0).map(c => c.point[2]), [70]);
+});
+
+test('closely spaced cuts in the general engine get joints sized to fit, like the single-axis engine', async () => {
+  const post = await joined([[-15, -15, 0, 15, 15, 200]]);
+  const cuts = [50, 75, 100, 125].map((z, i) => cut('z', [0, 0, z], [0, 0], [0, 0, z + 5]));
+  const r = await makeFlexiCuts([post], cuts, { joint: 'ball', bend: 20 });
+  assert.equal(r.joints.length, 4);
+  for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
+  const ids = [...new Set(r.parts.map(p => p.seg))].sort();
+  for (let i = 0; i + 1 < ids.length; i++) assert.ok(await overlapVolume(piece(r, ids[i]), piece(r, ids[i + 1])) < 1e-6, `pieces ${ids[i]} and ${ids[i + 1]} do not touch`);
+  const single = await makeFlexi([post], { joint: 'ball', axis: 'z', count: 9, positions: [50, 75, 100, 125], bend: 20 });
+  const rad = r.joints.map(j => j.radius), ref = single.joints.map(j => j.radius);
+  assert.ok(Math.max(...rad) <= Math.max(...ref) + 1e-6, `ball radii ${rad.map(v => v.toFixed(1))} vs ${ref.map(v => v.toFixed(1))}`);
+}, { timeout: 180000 });
+
+test('roomAround: the distance along a cut\'s normal to the nearest other plane, either side', () => {
+  const zc2 = p => ({ axis: 'z', tilt: [0, 0], point: [0, 0, p] });
+  const r = roomAroundImport([zc2(40), zc2(70), zc2(95)], 1);
+  assert.deepEqual([r.below, r.above], [30, 25]);
+  assert.deepEqual(roomAroundImport([zc2(40)], 0), { below: Infinity, above: Infinity });
+  const side = roomAroundImport([zc2(40), { axis: 'x', tilt: [0, 0], point: [10, 0, 0] }], 0);
+  assert.deepEqual([side.below, side.above], [Infinity, Infinity], 'a plane running along the line never meets it');
+  const tilted = roomAroundImport([zc2(40), { axis: 'z', tilt: [45, 0], point: [0, 0, 60] }], 0);
+  assert.ok(Math.abs(tilted.above - 20) < 1e-9, `${tilted.above}`);
+});
+
+test('a curved tube (a quarter of a torus) cut square to its length at two angles: closed pieces in a chain that bend without touching', async () => {
+  const w = await loadManifold();
+  const cs = new w.CrossSection.circle(10, 48).translate([60, 0]);                       // a 20 mm tube whose centre line is a circle of radius 60 round z
+  const tube = w.Manifold.revolve(cs, 96, 90), part = fromManifold(tube, { name: 'Tube', color: null });
+  cs.delete(); tube.delete();
+  assert.equal(partStats(part).openEdges, 0);
+  // at angle t round the z axis the tube runs along (-sin t, cos t, 0): that is the y axis turned by t about z, which is tilt A of a y cut
+  const at = t => cut('y', [60 * Math.cos((t * Math.PI) / 180), 60 * Math.sin((t * Math.PI) / 180), 0], [t, 0], [60 * Math.cos((t * Math.PI) / 180), 60 * Math.sin((t * Math.PI) / 180), 0]);
+  const r = await makeFlexiCuts([part], [at(30), at(60)], { joint: 'ball', bend: 20 });
+  assert.equal(r.joints.length, 2);
+  assert.equal(new Set(r.parts.map(p => p.seg)).size, 3);
+  for (const p of r.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
+  const ids = [0, 1, 2], pcs = ids.map(i => piece(r, i));
+  assert.ok(await overlapVolume(pcs[0], pcs[1]) < 1e-6 && await overlapVolume(pcs[1], pcs[2]) < 1e-6, 'neighbouring pieces do not touch');
+  // every joint's centre is on the tube's centre line (radius 60 about z, z = 0), and its bend axis points along the tube's radius, so the tube bends in its own plane
+  for (const [i, j] of r.joints.entries()) {
+    assert.ok(Math.abs(Math.hypot(j.pivot[0], j.pivot[1]) - 60) < 4 && Math.abs(j.pivot[2]) < 4, `joint ${i + 1} pivot ${j.pivot.map(v => v.toFixed(1))}`);
+    const t = ((i === 0 ? 30 : 60) * Math.PI) / 180, tangent = [-Math.sin(t), Math.cos(t), 0];
+    assert.ok(Math.abs(j.axis.reduce((s, v, k) => s + v * tangent[k], 0)) < 1e-6, 'the bend axis lies in the cut plane');
+  }
+  assert.ok(r.bend > 5, `reports ${r.bend} degrees`);
+}, { timeout: 180000 });

@@ -88,10 +88,10 @@ export function splitByLabel(m, origin) {
  * opts: { axis: 'x' | 'y' | 'z', count (segments), positions (optional list of cuts, mm along the axis),
  *         joint: 'hook' (a closed loop on each segment, the two linked like a chain) | 'ball' (ball and socket),
  *         ball (mm radius, 0 = auto), bar (mm, the loops' bar thickness, 0 = auto), bend (degrees each joint should reach),
- *         clearance }                                                          (the gap between segments follows from the joint's size)
- * Returns { parts, cuts: [mm along the axis], joints: [{ half (half the distance between the two faces), at (the cut, mm along the axis), pivot (the ball's centre, same axis, model coordinates), x, y, radius }], bend (degrees actually allowed), warnings }.
+ *         clearance, clip ([low, high] along the axis: the room other cuts leave this one, so joints are sized to fit) }   (the gap between segments follows from the joint's size)
+ * Returns { parts, cuts: [mm along the axis], joints: [{ half (half the distance between the two faces), at (the cut, mm along the axis), pivot (the ball's centre, same axis, model coordinates), x, y, radius, extent (how far the joint reaches sideways from its centre) }], bend (degrees actually allowed), warnings }.
  */
-export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null, joint = 'hook', ball = 0, bar = 0, bend = 20, clearance = 0.4 } = {}) {
+export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null, joint = 'hook', ball = 0, bar = 0, bend = 20, clearance = 0.4, clip = null } = {}) {
   if (!FORWARD[axis]) throw new Error(`Unknown axis: ${axis}`);
   if (!(clearance >= 0.1)) throw new Error('The joint clearance must be at least 0.1 mm, or the pieces fuse together.');
   const w = await loadManifold(), made = [], keep = m => { made.push(m); return m; }, warnings = [];
@@ -104,7 +104,8 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
     const { min, max } = whole.boundingBox(), lo = min[2], hi = max[2];
     const cuts = cutPositions(lo, hi, count, positions);
     if (!cuts.length) throw new Error('Nothing to cut: ask for at least 2 segments, or give cut positions inside the model.');
-    const edges = [lo, ...cuts, hi], thick = i => edges[i + 1] - edges[i];       // segment i runs edges[i] .. edges[i + 1]
+    // segment i runs edges[i] .. edges[i + 1]. `clip` ([low, high], along the axis) says other cuts, made separately, leave this one less room than the model's ends do
+    const edges = [clip ? Math.max(lo, clip[0]) : lo, ...cuts, clip ? Math.min(hi, clip[1]) : hi], thick = i => edges[i + 1] - edges[i];
 
     // 1. a joint site for every separate piece of the model's cross-section at each cut
     const sites = [], skipped = [];
@@ -227,6 +228,6 @@ export async function makeFlexi(parts, { axis = 'z', count = 4, positions = null
         out.push(permute({ name: name(member), color: member.color, slot: member.slot, seg: p.seg, positions: sub.positions, indices: sub.indices, ...(member.group ? { group: member.group } : {}) }, axis, true));
       }
     }
-    return { parts: out, cuts, joints: joints.map(j => ({ k: j.k, at: j.c, half: j.half, pivot: hook ? j.c : j.c - j.half + j.a, x: j.x, y: j.y, radius: hook ? j.d : j.R })), bend: allowed, warnings };
+    return { parts: out, cuts, joints: joints.map(j => ({ k: j.k, at: j.c, half: j.half, pivot: hook ? j.c : j.c - j.half + j.a, x: j.x, y: j.y, radius: hook ? j.d : j.R, extent: hook ? j.W / 2 + 1 : j.Ro })), bend: allowed, warnings };
   } finally { made.forEach(m => m.delete()); }
 }

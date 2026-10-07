@@ -70,7 +70,7 @@
         <label>Joint type
           <select id="joint"><option value="hook">Hook and loop (chain links)</option><option value="ball">Ball and socket</option></select>
         </label>
-        <label>Cut across
+        <label>New cuts go across
           <select id="axis"><option value="z">Its height (up and down)</option><option value="x">Its width (left to right)</option><option value="y">Its depth (front to back)</option></select>
         </label>
         <div class="row">
@@ -78,9 +78,11 @@
           <label>Bend per joint (deg) <input type="number" id="bend" value="20" min="0" max="60" step="5"></label>
         </div>
         <label class="inline"><input type="checkbox" id="editCuts" checked> Place cuts in the preview</label>
-        <small class="muted">Click the model to add a cut there. Drag an orange plane along the model to move it, and double-click a plane to remove it. Drag anywhere else to turn the view. Cuts snap to 0.5 mm and stay at least 6 mm apart, because a joint needs room on both sides.</small>
+        <small class="muted">Click the model to add a cut there, across the direction chosen above. Drag an orange plane to move it, and double-click a plane to remove it. Drag anywhere else to turn the view. Cuts snap to 0.5 mm, and cuts in the same direction stay at least 6 mm apart, because a joint needs room on both sides.</small>
         <div id="cutBox" hidden>
+          <div class="cuthead"><span></span><span>Across</span><span>mm</span><span>Tilt A</span><span>Tilt B</span><span></span></div>
           <ul id="cutList" class="cutlist"></ul>
+          <small class="muted">Each cut can go across X, Y or Z and be tilted. Tilt A and B turn the plane about the other two axes (for a Z cut, A about X and B about Y), so a cut can follow a body that curves. <b>Each cut works on the piece you clicked, in the order you placed them</b>, so a tail can be cut one way and a leg another. A cut slices every part of that piece it crosses, and must stay clear of an earlier joint in the same piece.</small>
           <div id="cutSegs" class="muted-inline"></div>
           <div class="row">
             <button type="button" id="addCut" class="small">Add a cut</button>

@@ -68,3 +68,62 @@ export function dragValue(start, deltaPx, axisPx) {
 /** The custom-position text the page keeps (it is also what the model is cut by). */
 export const cutsToText = list => list.map(r1).join(', ');
 export function textToCuts(text) { return (text || '').split(/[,;\s]+/).map(parseFloat).filter(Number.isFinite); }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Cuts with their own axis and tilt (see cut-plane.js). A cut is { axis, tilt: [a, b], point, anchor? } in the model's placed coordinates;
+// `bounds` is the model's { min, max }. The list is kept in the order the cuts were placed, because each cut works on the piece its click
+// was in, as the earlier cuts left it. Cuts in parallel planes (the same axis and tilt) keep the minimum segment length between them.
+import { axisIndex, normalOf, positionOf, setPosition, sameDirection } from './cut-plane.js';
+
+export const MAX_TILT = 60;
+const lengthOf = (cut, bounds) => { const k = axisIndex(cut.axis); return bounds.max[k] - bounds.min[k]; };
+
+/** The cuts from a list of positions (mm from the low end) all across one axis, through the middle of the model: the page's "even segments" and typed positions. */
+export function cutsFromOffsets(offsets, axis, bounds) {
+  const k = axisIndex(axis), centre = bounds.min.map((v, i) => (v + bounds.max[i]) / 2);
+  return offsets.map(v => ({ axis, tilt: [0, 0], point: centre.map((c, i) => (i === k ? bounds.min[k] + v : c)), anchor: null }));
+}
+/** The other way, for cuts that are all parallel (sorted). */
+export const offsetsOf = (cuts, bounds) => cuts.map(c => r1(positionOf(c, bounds.min[axisIndex(c.axis)]))).sort((a, b) => a - b);
+
+/** Add a cut. Snaps its position to 0.5 mm. Refuses (with a reason in words) a spot without `min` mm of model on each side, or too near a parallel cut. */
+export function addCutAt(cuts, cut, bounds, min = MIN_SEGMENT) {
+  const k = axisIndex(cut.axis), snapped = setPosition(cut, bounds.min[k] + snap(positionOf(cut, bounds.min[k]))), pos = positionOf(snapped, bounds.min[k]), length = lengthOf(cut, bounds);
+  if (pos < min || pos > length - min) return { cuts, added: false, reason: `A cut needs ${min} mm of model on each side. Click further from the end.` };
+  const near = cuts.find(o => sameDirection(o, snapped) && Math.abs(positionOf(o, bounds.min[k]) - pos) < min);
+  if (near) return { cuts, added: false, reason: `That is only ${r1(Math.abs(positionOf(near, bounds.min[k]) - pos))} mm from another cut in the same direction; segments must be at least ${min} mm long. Drag the existing cut instead.` };
+  return { cuts: [...cuts, snapped], added: true, reason: '' };
+}
+
+/** Move cut `i` so its plane passes `coord` on its axis, held `min` mm from the ends and from parallel neighbours. */
+export function moveCutTo(cuts, i, coord, bounds, min = MIN_SEGMENT) {
+  const c = cuts[i], k = axisIndex(c.axis), lo = bounds.min[k], length = lengthOf(c, bounds);
+  let low = min, high = length - min;
+  for (const [j, o] of cuts.entries()) {
+    if (j === i || !sameDirection(o, c)) continue;
+    const p = positionOf(o, lo), mine = positionOf(c, lo);
+    if (p < mine) low = Math.max(low, p + min); else high = Math.min(high, p - min);
+  }
+  if (high < low) return cuts.slice();
+  const pos = Math.min(high, Math.max(low, snap(coord - lo)));
+  return cuts.map((x, j) => (j === i ? setPosition(x, lo + pos) : x));
+}
+
+export const removeCutAt = (cuts, i) => cuts.filter((_, k) => k !== i);
+
+/** Set a cut's two tilts (degrees, held within +-MAX_TILT). */
+export function tiltCutTo(cuts, i, a, b) {
+  const clamp = v => Math.max(-MAX_TILT, Math.min(MAX_TILT, Number.isFinite(v) ? v : 0));
+  return cuts.map((c, j) => (j === i ? { ...c, tilt: [clamp(a), clamp(b)] } : c));
+}
+
+/** Change a cut's axis: the plane stays through the same point and stands up straight on the new axis (tilts reset). */
+export function setCutAxis(cuts, i, axis) {
+  return cuts.map((c, j) => (j === i ? { ...c, axis, tilt: [0, 0] } : c));
+}
+
+/** Move a cut by `delta` mm along its own normal (for dragging a plane), snapped like the rest. */
+export function dragCut(cuts, i, delta, bounds, min = MIN_SEGMENT) {
+  const c = cuts[i], k = axisIndex(c.axis), n = normalOf(c.axis, c.tilt), start = c.point[k];
+  return moveCutTo(cuts, i, start + delta * n[k], bounds, min);
+}

@@ -90,7 +90,9 @@ button.small { padding: 4px 10px; font-size: 13px; margin-top: 8px; }
 .platebuttons { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .platebuttons button.active { border-color: var(--accent); color: var(--accent-dark); font-weight: 600; }
 .cutlist { list-style: none; padding: 0; margin: 8px 0 4px; }
-.cutlist li { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
-.cutlist li span { width: 48px; color: var(--muted); }
-.cutlist input[type=number] { flex: 1; margin: 0; padding: 4px 6px; }
-.cutlist button { padding: 2px 9px; }
+.cutlist li, .cuthead { display: grid; grid-template-columns: 44px 52px 1fr 54px 54px 30px; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 13px; }
+.cuthead { color: var(--muted); font-size: 12px; margin: 8px 0 4px; }
+.cutlist { margin-top: 0; }
+.cutlist li span { color: var(--muted); }
+.cutlist input[type=number], .cutlist select { margin: 0; padding: 4px 4px; min-width: 0; width: 100%; }
+.cutlist button { padding: 2px 8px; }
