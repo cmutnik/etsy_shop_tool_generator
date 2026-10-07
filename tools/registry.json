@@ -42,6 +42,27 @@
     "path": "cookie-cutter/"
   },
   {
+    "id": "plant-markers",
+    "title": "Plant Markers",
+    "description": "A list of plant names to a bed full of garden stakes: raised letters on a head plate with a spike. One STL / 3MF of the set, or a ZIP of one STL each.",
+    "status": "live",
+    "path": "plant-markers/"
+  },
+  {
+    "id": "listing-photos",
+    "title": "Listing Photos",
+    "description": "Turn a 3D file into product photos: pick an angle, backdrop, colour and finish, and download PNGs at Etsy sizes, one or a set of six.",
+    "status": "live",
+    "path": "listing-photos/"
+  },
+  {
+    "id": "mesh-checker",
+    "title": "Mesh Checker",
+    "description": "Check a model before it prints: holes, inside-out faces, size against your bed, overhangs that need supports, and walls too thin to print. Can repair it.",
+    "status": "live",
+    "path": "mesh-checker/"
+  },
+  {
     "id": "qr-stand",
     "title": "QR Code Stand",
     "description": "QR plate with optional icon and title, plus a slotted base that holds it standing up. STL and colour 3MF.",

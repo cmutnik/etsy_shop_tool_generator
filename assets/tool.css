@@ -61,3 +61,22 @@ button.small { padding: 4px 10px; font-size: 13px; margin-top: 8px; }
 .swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
 .swatches input[type=color] { margin-top: 0; }
 .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--line); margin-right: 8px; vertical-align: -1px; }
+.verdict { border-radius: 8px; padding: 10px 14px; font-weight: 600; margin: 12px 0 8px; }
+.verdict.ready { background: #e4f4e4; color: #1d5a1d; }
+.verdict.caution { background: var(--warn-bg); color: var(--warn-text); }
+.verdict.problem { background: #fde8e8; color: #7a1010; }
+@media (prefers-color-scheme: dark) { .verdict.ready { background: #1d3a1d; color: #bff0bf; } .verdict.problem { background: #4a1d1d; color: #ffc9c9; } }
+.findings { list-style: none; padding: 0; margin: 0 0 12px; }
+.findings .f { background: var(--panel); border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; font-size: 14px; }
+.findings .f.bad { border-left-color: #c93030; } .findings .f.warn { border-left-color: #e0a100; } .findings .f.ok { border-left-color: #3a9a3a; } .findings .f.info { border-left-color: #6b8ba4; }
+.findings .ft { font-weight: 600; }
+.findings .fd, .findings .ff { color: var(--muted); margin-top: 4px; }
+.findings .badge { display: inline-block; min-width: 22px; text-align: center; margin-right: 8px; padding: 0 5px; border-radius: 10px; font-size: 12px; background: var(--line); color: var(--text); }
+#viewport.drop { outline: 2px dashed var(--accent); }
+.stage { display: flex; justify-content: center; }
+.stage.drop { outline: 2px dashed var(--accent); }
+.frame { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: repeating-conic-gradient(#d8d8d8 0% 25%, #f2f2f2 0% 50%) 50% / 20px 20px; }
+.frame canvas { display: block; }
+.viewgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.viewgrid button { padding: 6px 8px; font-size: 13px; }
+.viewgrid button.active { border-color: var(--accent); color: var(--accent-dark); font-weight: 600; }

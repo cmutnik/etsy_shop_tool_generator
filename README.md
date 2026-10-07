@@ -16,6 +16,9 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [Layered Colour Art](tools/layered-art/) | live | Photo or logo reduced to a few filament colours and printed as stacked steps, HueForge-style (colour 3MF, one part per colour) |
 | [Name Keychain](tools/name-keychain/) | live | A name as raised letters on a plate that follows them (or a rounded rectangle), with a keyring loop (STL, two-colour 3MF) |
 | [Cookie Cutter Maker](tools/cookie-cutter/) | live | A built-in shape or a picture's outline as a cookie or clay cutter with a sharp edge and a press flange (STL) |
+| [Plant Markers](tools/plant-markers/) | live | A list of names to a bed of garden stakes: raised letters on a head plate with a spike (STL / 3MF of the set, or a ZIP of one STL each) |
+| [Listing Photos](tools/listing-photos/) | live | Turn a 3D file into product photos: angle, backdrop, colour and finish, PNGs at Etsy sizes (one, or a set of six) |
+| [Mesh Checker](tools/mesh-checker/) | live | Check a model before it prints: holes, inside-out faces, bed fit, overhangs, thin walls; can repair it |
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
 | [Flexi Maker](tools/flexi-maker/) | live | Turn a model into an articulated, print-in-place flexi with chain-link (hook and loop) or ball-and-socket joints; keeps 3MF colours |
@@ -52,6 +55,28 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Cutter:** the inside of the wall is exactly the cookie size you type. Flange (on the bed), straight wall, and a thin cutting edge at the top; wall, edge, heights and flange are all settable and checked against the nozzle.
 - Warns when a shape is too narrow, too small, or splits into several cutters.
 - Code: `tools/cookie-cutter/geometry.js`; tested in `tests/cookie-cutter.test.mjs`.
+
+### Plant Markers
+
+- **Batch from a list:** one name per line (up to 60; " / " makes two rows), any stamp font or your own. Heads fit their names, or all share the widest width.
+- **Stake:** spike length, width and tip, corner radius, thickness and letter height are settable; the page warns about letters that are too small, stakes too thin for soil, and very wide heads.
+- **One print bed:** markers are laid out in rows that wrap at your bed width, with the set's size and the filament-change height shown.
+- **Output:** one STL or two-part 3MF (stakes / letters) of the whole set, or a ZIP with one STL per marker.
+- Code: `tools/plant-markers/geometry.js`; tested in `tests/plant-markers.test.mjs`.
+
+### Listing Photos
+
+- **Photos from a model:** open an STL, 3MF or OBJ (colours kept, or one colour with a finish: matte, satin, glossy, silk), choose a backdrop (white, soft grey, cream, sage, blush, slate, any colour, or transparent), a soft gradient, shadow strength and brightness.
+- **Angles:** hero, front, side, back, from above and close-up, framed automatically; drag to turn the model and scroll to zoom, and the download uses what you see.
+- **Sizes:** 4:3 at 2000 or 3000 px wide, square, 5:4 and portrait. One PNG, or a ZIP of all six angles.
+- Rendering is in Three.js in the browser; the camera maths is in `shared/js/photo-framing.js` and tested.
+
+### Mesh Checker
+
+- **Before you print or sell a file:** open an STL, 3MF or OBJ and get a verdict (ready / printable with things to look at / problems) and a plain-language list: open edges and holes, edges shared by three or more faces, inside-out or flipped faces, duplicate and zero-area triangles, loose fragments under 1 mm, size against your bed (with presets for common printers), wrong-unit hints, overhangs that need supports, bed contact, and walls thinner than your nozzle or minimum.
+- **Views:** Overhangs shows steep downward faces in red; Thin walls marks the sampled spots in orange. Optionally check it lying on its largest flat face.
+- **Repair:** one button fixes holes, flipped faces and duplicates (the STL / 3MF Modifier's repair) and re-checks; download the result as an STL.
+- Wall thickness is a sample (about 3,000 points cast inwards), not every face, and the page says so. Code in `shared/js/mesh-check.js`, tested in `tests/mesh-check.test.mjs`.
 
 ### STL / 3MF Modifier
 
