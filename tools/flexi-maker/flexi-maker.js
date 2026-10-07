@@ -9,6 +9,7 @@ import { makeFlexi, fromAxisFrame } from './flexi.js';
 import { simplifyParts, SOFT_LIMIT, HARD_LIMIT } from './prepare.js';
 import { repairParts } from '../mesh-modifier/repair-groups.js';
 import { cutPositions } from './joints.js';
+import { makeTestStrip } from './test-strip.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
@@ -225,6 +226,34 @@ $('make').addEventListener('click', async () => {
   } finally { busy = false; $('make').disabled = false; }
 });
 
+// ---------- joint test strip ----------
+$('strip').addEventListener('click', async () => {
+  if (busy) return;
+  clearTimeout(timer);
+  busy = true; $('strip').disabled = $('make').disabled = true;
+  try {
+    if (!engineReady) { $('status').textContent = 'Loading the cutting engine (about 0.5 MB)...'; await loadManifold(); engineReady = true; }
+    $('status').textContent = 'Making the test strip...';
+    await new Promise(r => setTimeout(r, 30));
+    const r = await makeTestStrip({ joint: $('joint').value, ball: num('ball') || 0, bar: num('bar') || 0, bend: num('bend') || 0, clearance: num('clearance'), onSide: $('onSide').checked });
+    const { group, parts: meta } = buildGroup(r.parts);
+    assignSlots(r.parts).forEach((s, i) => { meta[i].extruder = s; });
+    invalidate();
+    viewer.setObject(group);
+    result = { group, meta, base: `joint-test-strip-${$('joint').value}-${r.clearances.map(c => c.toFixed(2)).join('-')}`, title: 'Joint test strip' };
+    shown = { size: r.size, sizeObj: { width: r.size[0], depth: r.size[1], height: r.size[2] } };
+    framed = true; viewer.resize(); viewer.setView(view, shown.sizeObj);
+    $('downloadStl').disabled = $('download3mf').disabled = false;
+    $('info').textContent = `Joint test strip: ${r.clearances.map(c => c.toFixed(2)).join(', ')} mm clearance, from the nearest bar to the farthest (1, 2 and 3 bumps)  |  ${round(r.size[0])} x ${round(r.size[1])} x ${round(r.size[2])} mm`;
+    showWarnings(['Print the strip as it is, with the settings you will use for the model (layer height, speed, filament). Bend each joint a few times to free it. Pick the lowest clearance that moves smoothly with no wobble, type it into "Joint clearance", then make your model. If every bar is stuck, raise the clearance by 0.2 mm and print the strip again; if all are loose, lower it.']);
+    $('status').textContent = 'Joint test strip ready. Change any setting to go back to your model.';
+    showError('');
+  } catch (e) {
+    $('status').textContent = source ? source.fileName : 'Open a file to start.';
+    showError(e.message || String(e));
+  } finally { busy = false; $('strip').disabled = false; $('make').disabled = !source; }
+});
+
 // ---------- try the bend ----------
 /**
  * What the preview shows after "Make it flexi": the same pieces, nested so that turning a joint carries everything above it along.
@@ -264,6 +293,6 @@ function applyPose(deg) {
 $('pose').addEventListener('input', () => applyPose(parseInt($('pose').value, 10) || 0));
 
 // ---------- download ----------
-const outName = ext => `${(source?.name || 'model').replace(/[^\w.-]+/g, '-')}-flexi.${ext}`;
+const outName = ext => (result?.base ? `${result.base}.${ext}` : `${(source?.name || 'model').replace(/[^\w.-]+/g, '-')}-flexi.${ext}`);
 $('downloadStl').addEventListener('click', () => result && downloadBlob(exportSTL(result.group), outName('stl')));
-$('download3mf').addEventListener('click', () => result && downloadBlob(export3MF(result.group, { title: `${source.name} flexi`, parts: result.meta }), outName('3mf')));
+$('download3mf').addEventListener('click', () => result && downloadBlob(export3MF(result.group, { title: result.title || `${source.name} flexi`, parts: result.meta }), outName('3mf')));

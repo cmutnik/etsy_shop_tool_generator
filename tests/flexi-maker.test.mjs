@@ -273,3 +273,53 @@ test('repairParts: a few pinched, non-manifold spots are cut out and filled when
   assert.equal(partsStats(r.list.map(x => x.part))[0].openEdges, 0, r.log.join(' | '));
   assert.equal(r.list[0].part.color, '#AA0000');
 });
+
+// ---------------- joint test strip ----------------
+const { makeTestStrip, stripClearances, boxPart } = await import('../tools/flexi-maker/test-strip.js');
+const { boundsOfParts } = await import('../tools/mesh-modifier/geometry.js');
+
+test('stripClearances: three distinct values around the chosen one, never under 0.1 mm', () => {
+  assert.deepEqual(stripClearances(0.4), [0.3, 0.4, 0.5]);
+  assert.deepEqual(stripClearances(0.25, 0.05), [0.2, 0.25, 0.3]);
+  assert.deepEqual(stripClearances(0.15), [0.15, 0.25, 0.35]);
+  assert.deepEqual(stripClearances(0.1), [0.1, 0.2, 0.3]);
+  for (const c of [0.1, 0.12, 0.3, 0.9]) assert.equal(new Set(stripClearances(c)).size, 3);
+});
+
+for (const joint of ['hook', 'ball']) {
+  test(`${joint} test strip: three closed, separate bars at three clearances, laid out in a row without touching`, async () => {
+    const r = await makeTestStrip({ joint, clearance: 0.4, bend: 20 });
+    assert.deepEqual(r.clearances, [0.3, 0.4, 0.5]);
+    assert.equal(r.strips.length, 3);
+    for (const [i, s] of r.strips.entries()) {
+      const mine = s.parts.filter(p => !p.marker), marks = s.parts.filter(p => p.marker);
+      assert.equal(mine.length, 2, 'two segments per bar');
+      assert.equal(marks.length, i + 1, `${i + 1} bump marker${i ? 's' : ''} so the bars can be told apart`);
+      assert.ok(mine.every(p => p.name.startsWith(`${s.clearance.toFixed(2)} mm - Segment`)));
+      for (const p of s.parts) assert.equal(partStats(p).openEdges, 0, `${p.name} is closed`);
+    }
+    // bars are side by side with a gap, all lying on the bed
+    const boxes = r.strips.map(s => boundsOfParts(s.parts));
+    for (let i = 0; i < 2; i++) assert.ok(boxes[i + 1].min[1] - boxes[i].max[1] >= 5.5, `gap ${boxes[i + 1].min[1] - boxes[i].max[1]}`);
+    for (const b of boxes) assert.ok(Math.abs(b.min[2]) < 1e-4);
+    assert.ok(Math.abs(boundsOfParts(r.parts).min[1] + boundsOfParts(r.parts).max[1]) < 1e-3, 'centred on the bed');
+    // lying on its side: the bar's 64 mm now runs along x
+    assert.ok(boxes[0].size[0] > 60 && boxes[0].size[1] < 30);
+  }, { timeout: 120000 });
+}
+
+test('a larger clearance leaves a wider gap: the joint pieces of the loosest bar are further apart than the tightest', async () => {
+  const w = await loadManifold();
+  const r = await makeTestStrip({ joint: 'ball', clearance: 0.4, step: 0.2 });
+  // volume of material falls as the clearance grows (the socket is cut bigger around the same ball)
+  const volume = s => s.parts.filter(p => !p.marker).reduce((v, p) => { const m = toManifold(w, p); const x = m.volume(); m.delete(); return v + x; }, 0);
+  const [a, b, c] = r.strips.map(volume);
+  assert.ok(a > b && b > c, `volumes ${a.toFixed(0)} > ${b.toFixed(0)} > ${c.toFixed(0)}`);
+}, { timeout: 120000 });
+
+test('test strip can be stood upright, and a bar too small for the joint says so', async () => {
+  const up = await makeTestStrip({ joint: 'hook', onSide: false });
+  const b = boundsOfParts(up.strips[0].parts);
+  assert.ok(b.size[2] > 60 && Math.abs(b.min[2]) < 1e-4);
+  await assert.rejects(() => makeTestStrip({ joint: 'ball', section: 5 }), /No joint fits/);
+}, { timeout: 120000 });

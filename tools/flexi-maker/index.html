@@ -89,6 +89,8 @@
         <label class="inline"><input type="checkbox" id="onSide" checked> Lay it on its side for printing (recommended)</label>
         <small class="muted">Each cut becomes a joint that prints already assembled. <b>Hook and loop</b> gives each segment a closed loop and links the two at right angles, like a chain, so every pair can swing and twist; the segments end up a link-length apart. <b>Ball and socket</b> puts a ball on a short neck on one segment and a cup over it on the next, like an articulated figure; the cup's mouth is narrower than the ball, so it cannot pull out. Clearance is the space each moving part needs: 0.3-0.4 mm suits most 0.4 mm nozzles, bigger if joints fuse. Laying the model on its side prints the joints with vertical gaps, which prints cleanly; standing it up makes each joint a flat overhang.</small>
         <button id="make" class="primary" type="button" disabled>Make it flexi</button>
+        <button id="strip" class="primary secondary" type="button" title="A small three-bar sample at three clearances, to print first">Make a joint test strip</button>
+        <small class="muted">Not sure what clearance your printer needs? Make the test strip first: three small bars with the joint settings above, at the clearance minus 0.1, the clearance itself, and plus 0.1 mm. It prints in about 15 minutes and needs no model. The bars have 1, 2 and 3 bumps; the one that moves freely without wobbling gives the clearance to type above.</small>
       </fieldset>
 
       <fieldset id="fixBox" hidden>
