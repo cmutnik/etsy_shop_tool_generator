@@ -56,3 +56,8 @@ button.primary.secondary:hover { background: var(--bg); }
 .controls input[type=color] { display: block; width: 100%; height: 34px; margin-top: 3px; padding: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 button.small { padding: 4px 10px; font-size: 13px; margin-top: 8px; }
 [hidden] { display: none !important; }   /* so the hidden attribute wins over display rules like .muted { display: block } */
+.litwrap { background: #111; border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: center; }
+.litwrap canvas { max-width: 100%; max-height: min(60vh, 560px); image-rendering: auto; background: #000; }
+.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+.swatches input[type=color] { margin-top: 0; }
+.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--line); margin-right: 8px; vertical-align: -1px; }

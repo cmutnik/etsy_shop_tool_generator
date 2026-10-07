@@ -1,0 +1,96 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Cookie Cutter Maker - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+      "polygon-clipping": "https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="../../">Etsy Shop Tools</a>
+    <nav id="toolnav" aria-label="Tools"></nav>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Shape</legend>
+        <label>Start from
+          <select id="source"></select>
+        </label>
+        <div id="pictureBox" hidden>
+          <label>Picture (PNG, JPG, WebP or SVG)
+            <input type="file" id="file" accept="image/*,.svg">
+          </label>
+          <small class="muted" id="pictureNote">Use a simple, bold silhouette: dark shape on a light background, or a PNG with a transparent background. Anything thinner than about 3 mm will not work as a cutter. Image Prep can clean a picture up first.</small>
+          <div class="row">
+            <label>Smoothing <input type="number" id="smooth" value="2" min="0" max="8" step="1"></label>
+            <label>Outline detail (px) <input type="number" id="tolerance" value="1.5" min="0.5" max="6" step="0.5"></label>
+          </div>
+          <label class="inline"><input type="checkbox" id="invert"> Swap shape and background</label>
+        </div>
+        <label class="inline"><input type="checkbox" id="fillHoles" checked> Ignore holes (cut one solid silhouette)</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Size</legend>
+        <label>Cookie size, longest side (mm) <input type="number" id="size" value="70" min="15" max="200" step="1"></label>
+        <small class="muted">This is the inside of the cutter, so the cookie comes out this size. The wall and flange add to the outside.</small>
+        <div class="row">
+          <label>Total height (mm) <input type="number" id="height" value="12" min="6" max="40" step="1"></label>
+          <label>Wall thickness (mm) <input type="number" id="wall" value="1.2" min="0.8" max="4" step="0.2"></label>
+        </div>
+        <div class="row">
+          <label>Cutting edge (mm) <input type="number" id="edge" value="0.6" min="0.4" max="2" step="0.1"></label>
+          <label>Sharp part height (mm) <input type="number" id="edgeHeight" value="2" min="0.5" max="8" step="0.5"></label>
+        </div>
+        <div class="row">
+          <label>Flange width (mm) <input type="number" id="flange" value="4" min="0" max="15" step="0.5"></label>
+          <label>Flange thickness (mm) <input type="number" id="flangeThickness" value="2" min="0.8" max="6" step="0.2"></label>
+        </div>
+        <small class="muted">The flange is the lip you press on. Make it wider for a bigger cutter. Set it to 0 for a plain wall.</small>
+        <label>Preview colour <input type="color" id="color" value="#d9a441"></label>
+      </fieldset>
+
+      <div class="row"><button id="download" class="primary">Download STL</button></div>
+      <div id="error" class="error" hidden></div>
+      <div id="warnings"></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar">
+        <button data-view="print" class="active">3D view</button>
+        <button data-view="top">Top view</button>
+        <span id="status" class="status"></span>
+      </div>
+      <div id="viewport"></div>
+      <div id="info" class="info"></div>
+      <details class="tips" open>
+        <summary>Printing tips</summary>
+        <ul>
+          <li><b>Orientation:</b> print it as exported, <b>flange on the bed</b> and the cutting edge pointing up. No supports. To use it, turn it over: press the flange, edge down.</li>
+          <li><b>Material:</b> PETG or PLA. For dough, use a food-safe filament and wash by hand: layer lines can hold residue, so treat it as a short-contact cutter rather than for storing food. For clay and craft use it is fine as is.</li>
+          <li><b>Settings:</b> 0.4 mm nozzle, 0.16-0.2 mm layers, 3 walls, slow outer walls. A wall of 1.2 mm prints as exactly 3 lines; a thickness that is not a multiple of 0.4 mm gets gap-filled and can come out weaker.</li>
+          <li><b>Cutting edge:</b> 0.6 mm is a good balance. 0.4 mm is sharper but breaks more easily.</li>
+          <li><b>Tight details:</b> sharp inner corners and narrow points are hard to cut cleanly. Rounder shapes cut best. The page warns when a shape is very narrow.</li>
+          <li><b>Selling it:</b> shapes of characters and logos you do not own can be copyrighted or trademarked. Plain shapes and your own drawings are safe.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="cookie-cutter.js"></script>
+  <script type="module" src="../../shared/js/nav.js"></script>
+</body>
+</html>

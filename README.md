@@ -12,6 +12,10 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 |---|---|---|
 | [3D Stamp Generator](tools/stamp/) | live | Text, logo and border stamps as FDM-ready STL / 3MF |
 | [Image Prep](tools/image-prep/) | live | Pictures to black and white, or to SVG line art, ready for the stamp generator |
+| [Lithophane Maker](tools/lithophane/) | live | Photo to a backlit lithophane plate, flat or curved, with a frame and a backlit preview (STL) |
+| [Layered Colour Art](tools/layered-art/) | live | Photo or logo reduced to a few filament colours and printed as stacked steps, HueForge-style (colour 3MF, one part per colour) |
+| [Name Keychain](tools/name-keychain/) | live | A name as raised letters on a plate that follows them (or a rounded rectangle), with a keyring loop (STL, two-colour 3MF) |
+| [Cookie Cutter Maker](tools/cookie-cutter/) | live | A built-in shape or a picture's outline as a cookie or clay cutter with a sharp edge and a press flange (STL) |
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
 | [Flexi Maker](tools/flexi-maker/) | live | Turn a model into an articulated, print-in-place flexi with chain-link (hook and loop) or ball-and-socket joints; keeps 3MF colours |
@@ -19,6 +23,35 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [STL / 3MF Modifier](tools/mesh-modifier/) | live | Open an existing model, resize / rotate / mirror it, add a hanging tab or raised text; keeps 3MF parts and colours |
 
 The list shown on the home page comes from [tools/registry.json](tools/registry.json).
+
+### Lithophane Maker
+
+- **Photo to plate:** thickness follows darkness (dark = thick, light = thin), between a thinnest and thickest value you set (default 0.8-3.2 mm). Options: negative, contrast curve, smoothing, cell size (default 0.4 mm) and a full-thickness frame.
+- **Flat or curved:** curve it up to 270 degrees to wrap a lamp (the light goes on the inside of the curve).
+- **Upright:** the plate stands on its bottom edge with the smooth face towards you, the way lithophanes print best.
+- **Backlit preview:** a simulation of the lit plate (light falls off exponentially with thickness), next to the 3D view.
+- Exports a watertight STL. Code in `shared/js/lithophane.js` (DOM-free, tested in `tests/lithophane.test.mjs`).
+
+### Layered Colour Art
+
+- **Picture to filament colours:** k-means reduces the picture to 2-8 colours; each colour is a colour picker you can set to the filaments you own, and every pixel takes the nearest one. Smoothing removes specks.
+- **Stacked steps:** the first colour is a base over the whole picture, each further colour is one step thick on top of it, over only the pixels at that colour or higher. Dark at the bottom (default), light at the bottom, or as listed. Transparent pixels stay empty, so a cut-out PNG prints as a cut-out.
+- **Output:** a 3MF with one part per colour, assigned to filament slots 1, 2, 3... from the bottom, or a single STL plus the list of heights to change filament at.
+- Layers are traced from one pixel grid, so they register exactly. Code in `shared/js/layered-art.js`, tested in `tests/layered-art.test.mjs`.
+
+### Name Keychain
+
+- **Name to keychain:** any text (two rows with a new line), any of the stamp fonts or your own font file. Letters stand on a plate that follows their outline (a sticker shape), a rounded rectangle, or no plate at all (the letters are the keychain; the page warns when they will print loose).
+- **Loop:** round, rounded square, hexagon, teardrop or lanyard slot, on the left or the top, sunk into the plate's real edge so a ragged outline still joins it. The hole keeps the QR keychain's 2.5 mm wall rule.
+- **Output:** STL, or a 3MF with the plate (slot 1) and letters (slot 2) as separate parts; the filament-change height is shown.
+- Code: `tools/name-keychain/geometry.js`, with the offsetting in `shared/js/offset2d.js`; tested in `tests/name-keychain.test.mjs`.
+
+### Cookie Cutter Maker
+
+- **Shape:** six built-in shapes (circle, rounded square, heart, star, flower, hexagon) or your own PNG / JPG / SVG outline, with smoothing, outline detail and a swap button. Holes can be kept (they get their own wall) or ignored.
+- **Cutter:** the inside of the wall is exactly the cookie size you type. Flange (on the bed), straight wall, and a thin cutting edge at the top; wall, edge, heights and flange are all settable and checked against the nozzle.
+- Warns when a shape is too narrow, too small, or splits into several cutters.
+- Code: `tools/cookie-cutter/geometry.js`; tested in `tests/cookie-cutter.test.mjs`.
 
 ### STL / 3MF Modifier
 

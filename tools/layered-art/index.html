@@ -1,0 +1,96 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Layered Colour Art - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="../../">Etsy Shop Tools</a>
+    <nav id="toolnav" aria-label="Tools"></nav>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Picture</legend>
+        <label>Picture (PNG, JPG, WebP or SVG)
+          <input type="file" id="file" accept="image/*,.svg">
+        </label>
+        <small class="muted" id="source">Showing a sample picture. Choose your own above. It never leaves your browser. A PNG with a transparent background prints as a cut-out; use Image Prep to remove a background first.</small>
+        <label>Number of colours <input type="number" id="colors" value="4" min="2" max="8" step="1"></label>
+        <label>Smoothing (removes specks and ragged edges)
+          <input type="range" id="smooth" min="0" max="4" step="1" value="1">
+          <span id="smoothLabel" class="muted-inline">1</span>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Filament colours</legend>
+        <small class="muted" style="margin-top:0">Set these to the filaments you will load. Every pixel takes the nearest of these colours. They start as the picture's own colours.</small>
+        <div id="swatches" class="swatches"></div>
+        <button type="button" id="resetColors" class="small">Reset colours from the picture</button>
+        <label>Stacking order (bottom first)
+          <select id="order">
+            <option value="dark-bottom">Dark at the bottom, light on top</option>
+            <option value="light-bottom">Light at the bottom, dark on top</option>
+            <option value="as-listed">In the order listed above</option>
+          </select>
+        </label>
+        <small class="muted">Dark at the bottom usually looks best: light filament on top covers dark cleanly. Each colour is printed on top of the one below, so only colours that sit above the first need a filament change.</small>
+      </fieldset>
+
+      <fieldset>
+        <legend>Size</legend>
+        <div class="row">
+          <label>Width (mm) <input type="number" id="widthMm" value="80" min="20" max="250" step="5"></label>
+          <label>Base thickness (mm) <input type="number" id="baseThickness" value="0.8" min="0.2" max="4" step="0.2"></label>
+        </div>
+        <label>Thickness of each colour step (mm) <input type="number" id="stepHeight" value="0.2" min="0.04" max="1" step="0.02"></label>
+        <small class="muted">Use a multiple of your layer height. 0.2 mm covers the colour below cleanly with most filaments. Thinner (0.08-0.12 mm) lets the lower colour show through for blended, glowing effects, as in tools like HueForge.</small>
+      </fieldset>
+
+      <div class="row"><button id="download3mf" class="primary">Download 3MF (one part per colour)</button></div>
+      <div class="row"><button id="download" class="primary secondary" type="button">Download STL (single colour)</button></div>
+      <div id="error" class="error" hidden></div>
+      <div id="warnings"></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar">
+        <button data-view="print" class="active">3D view</button>
+        <button data-view="top">Top view</button>
+        <span id="status" class="status"></span>
+      </div>
+      <div id="viewport"></div>
+      <div id="info" class="info"></div>
+      <div id="steps" class="info"></div>
+      <details class="tips" open>
+        <summary>Printing tips</summary>
+        <ul>
+          <li><b>Orientation:</b> print flat, exactly as exported, with no supports. The picture is on the top surface.</li>
+          <li><b>3MF (Orca / Bambu / PrusaSlicer):</b> one part per colour, already assigned to filament slots 1, 2, 3... from the bottom up. Load your filaments into those slots. A multi-colour printer (AMS, MMU, toolchanger) prints it as is.</li>
+          <li><b>One extruder:</b> use the STL and add a filament change at each height listed above, in your slicer's layer slider. The colour that goes on first is the bottom colour in the list.</li>
+          <li><b>Layer height:</b> make the base and every step a whole number of layers. For example 0.2 mm layers with a 0.8 mm base and 0.2 mm steps gives 4 layers, then 1 layer per colour.</li>
+          <li><b>Details:</b> with a 0.4 mm nozzle, anything narrower than about 0.4 mm will not print. Fewer colours and more smoothing give cleaner results. Wide, simple shapes work best.</li>
+          <li><b>Frame it:</b> add a border by making a rectangular picture, or print the piece and mount it in a frame.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="layered-art.js"></script>
+  <script type="module" src="../../shared/js/nav.js"></script>
+</body>
+</html>

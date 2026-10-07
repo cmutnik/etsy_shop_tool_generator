@@ -14,6 +14,34 @@
     "status": "live"
   },
   {
+    "id": "lithophane",
+    "title": "Lithophane Maker",
+    "description": "Photo to a backlit lithophane plate, flat or curved, with a frame and a live backlit preview. STL.",
+    "status": "live",
+    "path": "lithophane/"
+  },
+  {
+    "id": "layered-art",
+    "title": "Layered Colour Art",
+    "description": "Photo or logo reduced to a few filament colours and printed as stacked steps, one colour per height. Colour 3MF with a filament slot per layer.",
+    "status": "live",
+    "path": "layered-art/"
+  },
+  {
+    "id": "name-keychain",
+    "title": "Name Keychain",
+    "description": "Type a name: raised letters on a plate that follows them (or a rounded rectangle), with a keyring loop. STL and two-colour 3MF.",
+    "status": "live",
+    "path": "name-keychain/"
+  },
+  {
+    "id": "cookie-cutter",
+    "title": "Cookie Cutter Maker",
+    "description": "A built-in shape or your own picture's outline as a cookie or clay cutter with a sharp edge and a press flange. STL.",
+    "status": "live",
+    "path": "cookie-cutter/"
+  },
+  {
     "id": "qr-stand",
     "title": "QR Code Stand",
     "description": "QR plate with optional icon and title, plus a slotted base that holds it standing up. STL and colour 3MF.",
