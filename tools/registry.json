@@ -98,6 +98,13 @@
     "path": "mesh-modifier/"
   },
   {
+    "id": "plate-nester",
+    "title": "Plate Nester",
+    "description": "Arrange many models on one or more print beds by their real outlines, with copies, spacing and turning. One 3MF per plate, colours and filament slots kept.",
+    "status": "live",
+    "path": "plate-nester/"
+  },
+  {
     "id": "flexi-maker",
     "title": "Flexi Maker",
     "description": "Turn a model into an articulated, print-in-place flexi: cut it into segments joined by ball-and-socket joints. Keeps 3MF colours.",

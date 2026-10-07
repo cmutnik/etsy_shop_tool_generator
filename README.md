@@ -20,6 +20,7 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [Plant Markers](tools/plant-markers/) | live | A list of names to a bed of garden stakes: raised letters on a head plate with a spike (STL / 3MF of the set, or a ZIP of one STL each) |
 | [Listing Photos](tools/listing-photos/) | live | Turn a 3D file into product photos: angle, backdrop, colour and finish, PNGs at Etsy sizes (one, or a set of six) |
 | [Mesh Checker](tools/mesh-checker/) | live | Check a model before it prints: holes, inside-out faces, bed fit, overhangs, thin walls; can repair it |
+| [Plate Nester](tools/plate-nester/) | live | Arrange many models on one or more print beds by their real outlines, with copies, spacing and turning (3MF per plate, colours and slots kept) |
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
 | [Flexi Maker](tools/flexi-maker/) | live | Turn a model into an articulated, print-in-place flexi with chain-link (hook and loop) or ball-and-socket joints; keeps 3MF colours |
@@ -86,6 +87,15 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Magnet:** none, one in the best spot, or two side by side; the pocket (set your magnet's size and clearance) is on the back, checked to leave a wall, with a note on printing and gluing it.
 - **Ornament:** an optional loop at the top (five styles), shared with the name keychain.
 - **Output:** STL, or a 3MF with the plate and the raised parts as two filament slots. Code in `tools/magnets/geometry.js`, tested in `tests/magnets.test.mjs`.
+
+### Plate Nester
+
+- **Several files at once:** add any number of STL / 3MF / OBJ files (or drop them on the preview), set copies for each, and see them arranged on your bed (presets for common printers, or any size).
+- **Real outlines:** each model's footprint is measured, so an L-shaped piece or a ring leaves room for small ones beside or inside it. Models are turned in quarter, eighth or 15-degree steps (or not at all), with spacing and edge margin you set.
+- **Fill the plate:** set a model's copies to 0 to fill whatever room is left with copies of it (handy for coins, keychains and tags).
+- **More than one plate:** whatever does not fit goes on plate 2, 3 and so on. A model too big for the bed is named, with advice.
+- **Output:** a 3MF per plate with one part per model part, colours kept and filament slots by colour, an STL of the plate, or all plates in a ZIP. The plate is centred so a slicer opens it in the middle.
+- Code in `shared/js/nest.js`, tested in `tests/nest.test.mjs`.
 
 ### STL / 3MF Modifier
 
