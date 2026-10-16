@@ -1,0 +1,95 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Listing Photos - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="../../">Etsy Shop Tools</a>
+    <nav id="toolnav" aria-label="Tools"></nav>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Model</legend>
+        <label>Open an STL, 3MF or OBJ file
+          <input type="file" id="file" accept=".stl,.3mf,.obj,.mtl" multiple>
+        </label>
+        <small class="muted" id="source">Showing a sample model. Open yours, or drag a file onto the picture. It never leaves your browser.</small>
+        <label>The file's units
+          <select id="unit"><option value="1" selected>Millimetres</option><option value="10">Centimetres</option><option value="25.4">Inches</option></select>
+        </label>
+        <label>Colours
+          <select id="colorMode"><option value="file">Use the file's colours</option><option value="one">One colour for everything</option></select>
+        </label>
+        <label id="colorRow">Colour <input type="color" id="color" value="#d4552f"></label>
+        <label>Finish
+          <select id="finish"></select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Background</legend>
+        <label>Backdrop
+          <select id="background"></select>
+        </label>
+        <label id="bgColorRow">Backdrop colour <input type="color" id="bgColor" value="#e8e2d6"></label>
+        <label class="inline"><input type="checkbox" id="gradient" checked> Soft gradient (lighter at the top)</label>
+        <label>Shadow
+          <input type="range" id="shadow" min="0" max="100" value="55">
+        </label>
+        <label>Brightness
+          <input type="range" id="exposure" min="50" max="150" value="100">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Photo</legend>
+        <label>Size
+          <select id="size"></select>
+        </label>
+        <label>Space around the model
+          <input type="range" id="margin" min="100" max="160" value="118">
+        </label>
+        <div id="views" class="viewgrid"></div>
+        <small class="muted">Pick an angle, then drag the picture to turn the model or scroll to zoom. The download uses what you see.</small>
+      </fieldset>
+
+      <div class="row"><button id="download" class="primary">Download this photo (PNG)</button></div>
+      <div class="row"><button id="downloadSet" class="primary secondary" type="button">Download the set (6 angles, ZIP)</button></div>
+      <div id="error" class="error" hidden></div>
+    </section>
+
+    <section class="preview">
+      <div id="stage" class="stage"><div id="frame" class="frame"></div></div>
+      <div id="info" class="info"></div>
+      <details class="tips" open>
+        <summary>Tips for listing photos</summary>
+        <ul>
+          <li><b>First photo:</b> the hero angle on white or a soft colour, with the whole model in frame, is what shows in search results. Etsy crops the thumbnail to 4:3, so keep the model near the middle.</li>
+          <li><b>Photo set:</b> a listing can hold up to 20 images. Typical set: hero, front, side, close-up, a size-reference photo, and a photo of the real print. Buyers trust listings that show the real thing, so use these renders alongside real photos of your prints, not instead of them.</li>
+          <li><b>Be honest:</b> these are renders of the 3D file. Real prints have layer lines and the colour of your filament. Pick the finish and colour closest to the real print, and say in the listing that some photos are renders. Check Etsy's current rules on renders and photo size.</li>
+          <li><b>Size:</b> 2000 px wide is the minimum worth using; 3000 px is better if you want buyers to zoom in.</li>
+          <li><b>Transparent PNG:</b> choose "Transparent" to cut the model out, then place it in your own mockup or on a lifestyle photo.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="listing-photos.js"></script>
+  <script type="module" src="../../shared/js/nav.js"></script>
+</body>
+</html>

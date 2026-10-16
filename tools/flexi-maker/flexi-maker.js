@@ -9,6 +9,10 @@ import { makeFlexi, fromAxisFrame } from './flexi.js';
 import { simplifyParts, SOFT_LIMIT, HARD_LIMIT } from './prepare.js';
 import { repairParts } from '../mesh-modifier/repair-groups.js';
 import { cutPositions } from './joints.js';
+import { makeTestStrip } from './test-strip.js';
+import { segmentLengths, dragValue, cutsToText, MIN_SEGMENT, cutsFromOffsets, offsetsOf, addCutAt, moveCutTo, removeCutAt, tiltCutTo, setCutAxis, dragCut, MAX_TILT } from './cut-edit.js';
+import { makeFlexiCuts } from './multi.js';
+import { normalOf, needsGeneral, positionOf, axisIndex } from './cut-plane.js';
 
 const $ = id => document.getElementById(id);
 const num = id => parseFloat($(id).value);
@@ -19,6 +23,9 @@ let source = null;          // { name, fileName, parts, stats, include, colors, 
 let shown = null;           // { size, sizeObj } of what the preview shows
 let result = null;          // the flexi model, until something changes: { group, meta }
 let pose = null;            // the preview's bendable copy: { levels, joints, axis }
+let cutView = null;         // the cut planes in the preview, while they are showing: { group, planes, models, cuts, bounds }
+let manual = null;          // null: the cuts come from "Segments", "Cut positions" and "Cut across". Otherwise the cuts placed by hand: [{ axis, tilt, point, anchor }] in the placed model's coordinates
+let boundsKey = '';         // what the manual cuts were measured against: they are dropped if the model changes size or position
 let framed = false, view = 'print', timer = null, busy = false, engineReady = false;
 
 const showError = msg => { $('error').hidden = !msg; $('error').textContent = msg || ''; };
@@ -94,8 +101,15 @@ function placed(parts, { rotate = [0, 0, 0], unit = num('unit'), scale = (num('s
 }
 const customList = () => $('custom').value.split(/[,;\s]+/).map(parseFloat).filter(Number.isFinite);
 
+/** The cuts the page will make: the ones placed by hand, or even / typed positions all across the chosen axis. */
+function currentCuts(bounds) {
+  if (manual) return manual;
+  const axis = $('axis').value, k = AXES.indexOf(axis), lo = bounds.min[k], hi = bounds.max[k];
+  return cutsFromOffsets(cutPositions(lo, hi, num('count'), customList().map(v => lo + v)).map(c => c - lo), axis, bounds);
+}
+
 function refresh() { clearTimeout(timer); timer = setTimeout(draw, 120); invalidate(); }
-function invalidate() { result = null; pose = null; $('poseRow').hidden = true; $('pose').value = 0; $('poseOut').textContent = '0\u00b0'; $('downloadStl').disabled = $('download3mf').disabled = true; }
+function invalidate() { result = null; pose = null; cutView = null; $('poseRow').hidden = true; $('pose').value = 0; $('poseOut').textContent = '0°'; $('downloadStl').disabled = $('download3mf').disabled = true; }
 
 function draw() {
   if (!source) return;
@@ -106,19 +120,21 @@ function draw() {
   showError('');
   const xf = placed(used, { rotate: ['rotX', 'rotY', 'rotZ'].map(id => parseFloat($(id).value) || 0) });
   const { group } = buildGroup(xf.parts);
-  const k = AXES.indexOf($('axis').value), lo = xf.min[k], hi = xf.max[k];
-  const cuts = cutPositions(lo, hi, num('count'), customList().map(v => lo + v));
-  for (const c of cuts) {
+  const bounds = { min: xf.min, max: xf.max }, key = [...xf.min, ...xf.max].map(v => v.toFixed(2)).join();
+  if (key !== boundsKey) { manual = null; boundsKey = key; }                        // turned, scaled or trimmed: hand-placed cuts no longer mean the same thing
+  const cuts = currentCuts(bounds), diag = Math.hypot(...xf.size), planes = [];
+  for (const [i, c] of cuts.entries()) {
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xd9480f, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
-    const other = [0, 1, 2].filter(a => a !== k), centre = xf.min.map((v, a) => (v + xf.max[a]) / 2);
-    centre[k] = c;
-    plane.position.set(...centre);
-    if (k === 0) plane.rotation.y = Math.PI / 2; else if (k === 1) plane.rotation.x = Math.PI / 2;
-    const wide = other.map(a => (xf.max[a] - xf.min[a]) * 1.15 + 4);
-    // the plane's local x, y map to world axes: z cut -> (x, y); x cut (turned about y) -> (z, y); y cut (turned about x) -> (x, z)
-    plane.scale.set(...(k === 0 ? [wide[1], wide[0], 1] : [wide[0], wide[1], 1]));
+    plane.position.set(...c.point);
+    plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...normalOf(c.axis, c.tilt)));
+    const wide = diag * 0.75 + 4;                                                      // big enough to show a tilted plane across the whole model
+    plane.scale.set(wide, wide, 1);
+    plane.userData = { plane: true, index: i };
+    planes.push(plane);
     group.add(plane);
   }
+  cutView = { group, planes, models: group.children.filter(c => !c.userData.plane), cuts, bounds };
+  drawCutList();
   viewer.setObject(group);
   const [w, d, h] = xf.size;
   shown = { size: xf.size, sizeObj: { width: w, depth: d, height: h } };
@@ -133,10 +149,137 @@ function draw() {
   $('undoFix').hidden = !source.original;
   const longest = Math.max(w, d, h);
   if (longest < 20) warnings.push(`The model is only ${round(longest)} mm across, which is small for joints. Scale it up, or check "The file's units".`);
+  if (needsGeneral(cuts)) warnings.push('These cuts are in more than one direction or tilted, so each one is made on the piece you clicked, in the order you placed them, and the model is printed the way it is turned here ("Lay it on its side" is not used). A cut slices every part of the piece it works on.');
   showWarnings(warnings);
   $('status').textContent = source.fileName;
 }
-$('controls').addEventListener('input', e => { if (!e.target.closest('#partList') && e.target.id !== 'file') refresh(); });
+$('count').addEventListener('input', () => { $('custom').value = ''; manual = null; });   // asking for a number of segments means even ones again
+$('custom').addEventListener('input', () => { manual = null; });
+$('controls').addEventListener('input', e => { if (!e.target.closest('#partList') && !e.target.closest('#cutList') && e.target.id !== 'file') refresh(); });
+
+// ---------- placing the cuts by hand ----------
+/** Make `list` the cuts. The segment count and the positions box follow where they can (parallel cuts), and the preview is redrawn. */
+function setCuts(list) {
+  if (!cutView) return;
+  manual = list;
+  $('count').value = list.length + 1;
+  $('custom').value = needsGeneral(list) || !list.length ? '' : cutsToText(offsetsOf(list, cutView.bounds));
+  refresh();
+}
+const AXIS_LABEL = { x: 'X', y: 'Y', z: 'Z' };
+function drawCutList(live = null) {
+  const box = $('cutBox');
+  if (!cutView) { box.hidden = true; return; }
+  const cuts = live || cutView.cuts, b = cutView.bounds, len = k => b.max[k] - b.min[k];
+  box.hidden = false;
+  $('cutList').replaceChildren(...cuts.map((c, i) => {
+    const k = axisIndex(c.axis), li = document.createElement('li'), label = document.createElement('span'), axis = document.createElement('select'), pos = document.createElement('input'), ta = document.createElement('input'), tb = document.createElement('input'), rm = document.createElement('button');
+    label.textContent = `Cut ${i + 1}`;
+    for (const a of AXES) axis.append(Object.assign(document.createElement('option'), { value: a, textContent: AXIS_LABEL[a], selected: a === c.axis }));
+    axis.title = 'The direction this cut goes across';
+    axis.addEventListener('change', () => setCuts(setCutAxis(cutView.cuts, i, axis.value)));
+    pos.type = 'number'; pos.value = round(positionOf(c, b.min[k]), 1); pos.step = 0.5; pos.min = MIN_SEGMENT; pos.max = round(len(k) - MIN_SEGMENT, 1); pos.title = 'mm from the low end of the model, along the cut axis';
+    pos.addEventListener('change', () => setCuts(moveCutTo(cutView.cuts, i, b.min[k] + parseFloat(pos.value), b)));
+    const others = [AXES[(k + 1) % 3], AXES[(k + 2) % 3]];
+    [ta, tb].forEach((t, n) => { t.type = 'number'; t.value = round(c.tilt[n], 1); t.step = 5; t.min = -MAX_TILT; t.max = MAX_TILT; t.title = `Tilt the cut about the ${others[n].toUpperCase()} axis (degrees)`; t.addEventListener('change', () => setCuts(tiltCutTo(cutView.cuts, i, parseFloat(ta.value), parseFloat(tb.value)))); });
+    rm.type = 'button'; rm.textContent = '×'; rm.title = 'Remove this cut';
+    rm.addEventListener('click', () => setCuts(removeCutAt(cutView.cuts, i)));
+    li.append(label, axis, pos, ta, tb, rm);
+    return li;
+  }));
+  $('cutSegs').textContent = needsGeneral(cuts) ? `${cuts.length + 1} pieces, cut in the order shown` : `Segments: ${segmentLengths(offsetsOf(cuts, b), len(cuts.length ? axisIndex(cuts[0].axis) : AXES.indexOf($('axis').value))).join(' + ')} mm`;
+}
+$('addCut').addEventListener('click', () => {
+  if (!cutView) return;
+  const axis = $('axis').value, k = AXES.indexOf(axis), b = cutView.bounds, length = b.max[k] - b.min[k];
+  const same = cutView.cuts.filter(c => c.axis === axis && !c.tilt[0] && !c.tilt[1]), edges = [0, ...offsetsOf(same, b), length];
+  let best = 0;
+  for (let i = 1; i < edges.length - 1; i++) if (edges[i + 1] - edges[i] > edges[best + 1] - edges[best]) best = i;
+  const r = addCutAt(cutView.cuts, cutsFromOffsets([(edges[best] + edges[best + 1]) / 2], axis, b)[0], b);
+  if (r.added) setCuts(r.cuts); else showError(r.reason);
+});
+$('evenCuts').addEventListener('click', () => { manual = null; $('custom').value = ''; $('count').value = (cutView ? cutView.cuts.length : 1) + 1; refresh(); });
+
+// Click the model to add a cut there (across the axis chosen in "Cut across"); drag a cut plane along its normal to move it; double-click a plane to remove it.
+// Orbiting works as before. Each cut remembers where you clicked, so it works on the piece that was there.
+{
+  const dom = viewer.dom, ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  let drag = null, press = null, hover = null;
+  const pick = (e, objects) => {
+    const r = dom.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    viewer.camera.updateMatrixWorld();                                         // the render loop may not have run since the camera last moved
+    objects.forEach(o => o.updateMatrixWorld());
+    ray.setFromCamera(ndc, viewer.camera);
+    return ray.intersectObjects(objects, false);
+  };
+  const live = () => cutView && $('editCuts').checked && !result && !busy;
+  /** What is nearest under the pointer: a cut plane (grab it) or the model (add a cut there). A plane the model is in front of does not count. */
+  const nearest = e => { const h = pick(e, [...cutView.planes, ...cutView.models])[0]; return h ? { hit: h, plane: !!h.object.userData.plane } : null; };
+  const setHover = plane => {
+    if (hover === plane) return;
+    if (hover) hover.material.opacity = 0.35;
+    hover = plane;
+    if (hover) hover.material.opacity = 0.7;
+    dom.style.cursor = plane ? 'grab' : '';
+  };
+  /** One mm along the plane's normal, as a vector in screen pixels, at the plane's centre. */
+  const axisPixels = i => {
+    const r = dom.getBoundingClientRect(), c = cutView.cuts[i], a = new THREE.Vector3(...c.point), b = a.clone().add(new THREE.Vector3(...normalOf(c.axis, c.tilt)));
+    const px = v => { const p = v.clone().project(viewer.camera); return { x: (p.x * r.width) / 2, y: (-p.y * r.height) / 2 }; };
+    const pa = px(a), pb = px(b);
+    return { x: pb.x - pa.x, y: pb.y - pa.y };
+  };
+  dom.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !live()) return;
+    const n = nearest(e);
+    if (n && n.plane) {
+      const i = n.hit.object.userData.index;
+      drag = { i, x: e.clientX, y: e.clientY, axis: axisPixels(i), cuts: cutView.cuts.slice(), list: cutView.cuts.slice() };
+      viewer.controls.enabled = false;
+      try { dom.setPointerCapture(e.pointerId); } catch { /* a synthetic pointer: carry on without capture */ }
+      dom.style.cursor = 'grabbing';
+    } else press = { x: e.clientX, y: e.clientY };
+  });
+  dom.addEventListener('pointermove', e => {
+    if (!live()) return;
+    if (drag) {
+      const mm = dragValue(0, { x: e.clientX - drag.x, y: e.clientY - drag.y }, drag.axis);
+      drag.list = dragCut(drag.cuts, drag.i, mm, cutView.bounds);
+      cutView.planes[drag.i].position.set(...drag.list[drag.i].point);
+      drawCutList(drag.list);
+      $('status').textContent = `Cut ${drag.i + 1} at ${round(positionOf(drag.list[drag.i], cutView.bounds.min[axisIndex(drag.list[drag.i].axis)]), 1)} mm`;
+    } else if (!(e.buttons & 1)) { const n = nearest(e); setHover(n && n.plane ? n.hit.object : null); }
+  });
+  const finish = e => {
+    if (drag) {
+      const list = drag.list; drag = null;
+      viewer.controls.enabled = true;
+      dom.style.cursor = hover ? 'grab' : '';
+      try { dom.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+      setCuts(list);
+    }
+  };
+  dom.addEventListener('pointerup', e => {
+    if (drag) return finish(e);
+    if (!press) return;
+    const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y); press = null;
+    if (moved > 4 || !live()) return;                                          // that was an orbit, not a click
+    const n = nearest(e);
+    if (!n || n.plane) return;
+    showError('');
+    const hit = n.hit, normal = hit.face ? hit.face.normal : new THREE.Vector3(), point = hit.point.toArray();
+    const anchor = [0, 1, 2].map(k => point[k] - normal.getComponent(k));       // a point just inside the material, to tell which piece was clicked
+    const r = addCutAt(cutView.cuts, { axis: $('axis').value, tilt: [0, 0], point, anchor }, cutView.bounds);
+    if (r.added) setCuts(r.cuts); else showError(r.reason);
+  });
+  dom.addEventListener('pointercancel', finish);
+  dom.addEventListener('dblclick', e => {
+    if (!live()) return;
+    const n = nearest(e);
+    if (n && n.plane) setCuts(removeCutAt(cutView.cuts, n.hit.object.userData.index));
+  });
+}
 
 // ---------- fix the model: repair, reduce ----------
 const snapshot = () => ({ parts: source.parts, stats: source.stats, include: source.include, colors: source.colors, slots: source.slots });
@@ -199,17 +342,25 @@ $('make').addEventListener('click', async () => {
     $('status').textContent = 'Making joints...';
     await new Promise(r => setTimeout(r, 30));                                // let the status paint before the heavy work
     const xf = placed(used, { rotate: ['rotX', 'rotY', 'rotZ'].map(id => parseFloat($(id).value) || 0) });
-    const axis = $('axis').value, k = AXES.indexOf(axis), lo = xf.min[k];
-    const flexi = await makeFlexi(xf.parts, {
-      axis, count: num('count'), positions: customList().length ? customList().map(v => lo + v) : null,
-      joint: $('joint').value, ball: num('ball') || 0, bar: num('bar') || 0, bend: num('bend') || 0, clearance: num('clearance'),
-    });
+    const cuts = currentCuts({ min: xf.min, max: xf.max });
+    if (!cuts.length) throw new Error('Place at least one cut: click the model, or ask for two or more segments.');
+    const joint = { joint: $('joint').value, ball: num('ball') || 0, bar: num('bar') || 0, bend: num('bend') || 0, clearance: num('clearance') };
+    let flexi, tree, axis, turn = false;
+    if (needsGeneral(cuts)) {
+      flexi = await makeFlexiCuts(xf.parts, cuts, joint);                    // cuts in several directions, or tilted: each works on one piece
+      tree = flexi.joints.map(j => ({ parent: j.parent, child: j.child, pivot: j.pivot, axis: j.axis }));
+    } else {
+      axis = cuts[0].axis;                                                    // parallel straight cuts: the whole model, in a chain
+      const k = AXES.indexOf(axis), spin = [0, 1, 2].map(i => (i === (k + 1) % 3 ? 1 : 0));
+      flexi = await makeFlexi(xf.parts, { axis, count: cuts.length + 1, positions: cuts.map(c => c.point[k]), ...joint });
+      tree = flexi.joints.map(j => ({ parent: j.k, child: j.k + 1, pivot: fromAxisFrame([j.x, j.y, j.pivot], axis), axis: spin }));
+      turn = $('onSide').checked && axis === 'z';
+    }
     let parts = flexi.parts;
-    const turn = $('onSide').checked && axis === 'z';
     if (turn) parts = transformParts(parts, { rotate: [0, 90, 0], center: true, onBed: true }).parts;   // z -> x: the joints now lie sideways
     const { group, parts: meta } = buildGroup(parts);
     assignSlots(parts).forEach((s, i) => { meta[i].extruder = s; });
-    viewer.setObject(buildPose(flexi, axis, turn));
+    viewer.setObject(buildPose(flexi, tree, turn));
     const b = boundsOfParts(parts);
     result = { group, meta, colored: parts.some(p => p.color) };      // what gets exported: the unbent model
     shown = { size: b.size, sizeObj: { width: b.size[0], depth: b.size[1], height: b.size[2] } };
@@ -225,17 +376,46 @@ $('make').addEventListener('click', async () => {
   } finally { busy = false; $('make').disabled = false; }
 });
 
+// ---------- joint test strip ----------
+$('strip').addEventListener('click', async () => {
+  if (busy) return;
+  clearTimeout(timer);
+  busy = true; $('strip').disabled = $('make').disabled = true;
+  try {
+    if (!engineReady) { $('status').textContent = 'Loading the cutting engine (about 0.5 MB)...'; await loadManifold(); engineReady = true; }
+    $('status').textContent = 'Making the test strip...';
+    await new Promise(r => setTimeout(r, 30));
+    const r = await makeTestStrip({ joint: $('joint').value, ball: num('ball') || 0, bar: num('bar') || 0, bend: num('bend') || 0, clearance: num('clearance'), onSide: $('onSide').checked });
+    const { group, parts: meta } = buildGroup(r.parts);
+    assignSlots(r.parts).forEach((s, i) => { meta[i].extruder = s; });
+    invalidate();
+    viewer.setObject(group);
+    result = { group, meta, base: `joint-test-strip-${$('joint').value}-${r.clearances.map(c => c.toFixed(2)).join('-')}`, title: 'Joint test strip' };
+    shown = { size: r.size, sizeObj: { width: r.size[0], depth: r.size[1], height: r.size[2] } };
+    framed = true; viewer.resize(); viewer.setView(view, shown.sizeObj);
+    $('downloadStl').disabled = $('download3mf').disabled = false;
+    $('info').textContent = `Joint test strip: ${r.clearances.map(c => c.toFixed(2)).join(', ')} mm clearance, from the nearest bar to the farthest (1, 2 and 3 bumps)  |  ${round(r.size[0])} x ${round(r.size[1])} x ${round(r.size[2])} mm`;
+    showWarnings(['Print the strip as it is, with the settings you will use for the model (layer height, speed, filament). Bend each joint a few times to free it. Pick the lowest clearance that moves smoothly with no wobble, type it into "Joint clearance", then make your model. If every bar is stuck, raise the clearance by 0.2 mm and print the strip again; if all are loose, lower it.']);
+    $('status').textContent = 'Joint test strip ready. Change any setting to go back to your model.';
+    showError('');
+  } catch (e) {
+    $('status').textContent = source ? source.fileName : 'Open a file to start.';
+    showError(e.message || String(e));
+  } finally { busy = false; $('strip').disabled = false; $('make').disabled = !source; }
+});
+
 // ---------- try the bend ----------
 /**
- * What the preview shows after "Make it flexi": the same pieces, nested so that turning a joint carries everything above it along.
- * It is only a picture (pieces can pass through each other beyond the bend the page reports); the download is the unbent model.
+ * What the preview shows after "Make it flexi": the same pieces, nested along the joint tree so that turning a joint carries everything beyond it along.
+ * Each tree entry is { parent, child, pivot, axis } in the model's coordinates. It is only a picture (pieces can pass through each other beyond the bend the page
+ * reports); the download is the unbent model.
  */
-function buildPose(flexi, axis, turn) {
-  const k = AXES.indexOf(axis), spin = (k + 1) % 3, { group } = buildGroup(flexi.parts), segs = Math.max(...flexi.parts.map(p => p.seg)) + 1;
+function buildPose(flexi, tree, turn) {
+  const { group } = buildGroup(flexi.parts), segs = Math.max(...flexi.parts.map(p => p.seg)) + 1;
   const levels = Array.from({ length: segs }, () => new THREE.Group());
-  levels.forEach((g, s) => { if (s) levels[s - 1].add(g); });
+  for (const e of tree) if (!levels[e.child].parent) levels[e.parent].add(levels[e.child]);
   [...group.children].forEach((mesh, i) => levels[flexi.parts[i].seg].add(mesh));
-  const joints = levels.map((_, s) => { const j = flexi.joints.find(x => x.k === s - 1); return j && new THREE.Vector3(...fromAxisFrame([j.x, j.y, j.pivot], axis)); });
+  const joints = levels.map((_, s) => { const e = tree.find(x => x.child === s); return e && { pivot: new THREE.Vector3(...e.pivot), axis: new THREE.Vector3(...e.axis).normalize() }; });
   const root = new THREE.Group();
   root.add(levels[0]);
   if (turn) {                                                                      // the same turn and drop to the bed that the download got
@@ -243,27 +423,26 @@ function buildPose(flexi, axis, turn) {
     root.rotation.y = Math.PI / 2;
     root.position.set(...[-(b.min[0] + b.max[0]) / 2, -(b.min[1] + b.max[1]) / 2, -b.min[2]]);
   }
-  pose = { levels, joints, spin };
+  pose = { levels, joints };
   const limit = Math.max(1, Math.round(flexi.bend));
-  $('pose').min = -limit; $('pose').max = limit; $('pose').value = 0; $('poseOut').textContent = '0\u00b0';
+  $('pose').min = -limit; $('pose').max = limit; $('pose').value = 0; $('poseOut').textContent = '0°';
   $('poseRow').hidden = false;
   return root;
 }
 function applyPose(deg) {
   if (!pose) return;
-  $('poseOut').textContent = `${deg}\u00b0`;
-  const axisVec = new THREE.Vector3().setComponent(pose.spin, 1);
+  $('poseOut').textContent = `${deg}°`;
   pose.levels.forEach((g, s) => {
     if (!s) return;
-    const p = pose.joints[s];
+    const j = pose.joints[s], p = j && j.pivot;
     g.matrix.identity(); g.matrixAutoUpdate = false;
-    if (p) g.matrix.makeTranslation(p.x, p.y, p.z).multiply(new THREE.Matrix4().makeRotationAxis(axisVec, (deg * Math.PI) / 180)).multiply(new THREE.Matrix4().makeTranslation(-p.x, -p.y, -p.z));
+    if (j) g.matrix.makeTranslation(p.x, p.y, p.z).multiply(new THREE.Matrix4().makeRotationAxis(j.axis, (deg * Math.PI) / 180)).multiply(new THREE.Matrix4().makeTranslation(-p.x, -p.y, -p.z));
     g.matrixWorldNeedsUpdate = true;
   });
 }
 $('pose').addEventListener('input', () => applyPose(parseInt($('pose').value, 10) || 0));
 
 // ---------- download ----------
-const outName = ext => `${(source?.name || 'model').replace(/[^\w.-]+/g, '-')}-flexi.${ext}`;
+const outName = ext => (result?.base ? `${result.base}.${ext}` : `${(source?.name || 'model').replace(/[^\w.-]+/g, '-')}-flexi.${ext}`);
 $('downloadStl').addEventListener('click', () => result && downloadBlob(exportSTL(result.group), outName('stl')));
-$('download3mf').addEventListener('click', () => result && downloadBlob(export3MF(result.group, { title: `${source.name} flexi`, parts: result.meta }), outName('3mf')));
+$('download3mf').addEventListener('click', () => result && downloadBlob(export3MF(result.group, { title: result.title || `${source.name} flexi`, parts: result.meta }), outName('3mf')));

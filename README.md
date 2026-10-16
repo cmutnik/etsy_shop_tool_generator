@@ -12,6 +12,16 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 |---|---|---|
 | [3D Stamp Generator](tools/stamp/) | live | Text, logo and border stamps as FDM-ready STL / 3MF |
 | [Image Prep](tools/image-prep/) | live | Pictures to black and white, or to SVG line art, ready for the stamp generator |
+| [Lithophane Maker](tools/lithophane/) | live | Photo to a backlit lithophane plate, flat or curved, with a frame and a backlit preview (STL) |
+| [Layered Colour Art](tools/layered-art/) | live | Photo or logo reduced to a few filament colours and printed as stacked steps, HueForge-style (colour 3MF, one part per colour) |
+| [Name Keychain](tools/name-keychain/) | live | A name as raised letters on a plate that follows them (or a rounded rectangle), with a keyring loop (STL, two-colour 3MF) |
+| [Cookie Cutter Maker](tools/cookie-cutter/) | live | A built-in shape or a picture's outline as a cookie or clay cutter with a sharp edge and a press flange (STL) |
+| [Magnets and Ornaments](tools/magnets/) | live | Any shape as a fridge magnet or hanging ornament: raised text or picture, a rim, a pocket for a disc magnet, a loop (STL, two-colour 3MF) |
+| [Plant Markers](tools/plant-markers/) | live | A list of names to a bed of garden stakes: raised letters on a head plate with a spike (STL / 3MF of the set, or a ZIP of one STL each) |
+| [Listing Photos](tools/listing-photos/) | live | Turn a 3D file into product photos: angle, backdrop, colour and finish, PNGs at Etsy sizes (one, or a set of six) |
+| [Mesh Checker](tools/mesh-checker/) | live | Check a model before it prints: holes, inside-out faces, bed fit, overhangs, thin walls; can repair it |
+| [Plate Nester](tools/plate-nester/) | live | Arrange many models on one or more print beds by their real outlines, with copies, spacing and turning (3MF per plate, colours and slots kept) |
+| [Gridfinity Bins and Baseplates](tools/gridfinity/) | live | Storage bins and baseplates for the Gridfinity system: any size in grid units, compartments, scoop, stacking lip, magnet holes (STL, 3MF) |
 | [QR Code Keychain](tools/qr-keychain/) | live | QR plate with a split-ring loop, one printable piece (STL or colour 3MF) |
 | [QR Code Stand](tools/qr-stand/) | live | QR plate with optional icon and title, plus a slotted base that holds it standing up |
 | [Flexi Maker](tools/flexi-maker/) | live | Turn a model into an articulated, print-in-place flexi with chain-link (hook and loop) or ball-and-socket joints; keeps 3MF colours |
@@ -19,6 +29,83 @@ Everything runs client-side as a static site, so it can be hosted for free (GitH
 | [STL / 3MF Modifier](tools/mesh-modifier/) | live | Open an existing model, resize / rotate / mirror it, add a hanging tab or raised text; keeps 3MF parts and colours |
 
 The list shown on the home page comes from [tools/registry.json](tools/registry.json).
+
+### Lithophane Maker
+
+- **Photo to plate:** thickness follows darkness (dark = thick, light = thin), between a thinnest and thickest value you set (default 0.8-3.2 mm). Options: negative, contrast curve, smoothing, cell size (default 0.4 mm) and a full-thickness frame.
+- **Flat or curved:** curve it up to 270 degrees to wrap a lamp (the light goes on the inside of the curve).
+- **Upright:** the plate stands on its bottom edge with the smooth face towards you, the way lithophanes print best.
+- **Backlit preview:** a simulation of the lit plate (light falls off exponentially with thickness), next to the 3D view.
+- Exports a watertight STL. Code in `shared/js/lithophane.js` (DOM-free, tested in `tests/lithophane.test.mjs`).
+
+### Layered Colour Art
+
+- **Picture to filament colours:** k-means reduces the picture to 2-8 colours; each colour is a colour picker you can set to the filaments you own, and every pixel takes the nearest one. Smoothing removes specks.
+- **Stacked steps:** the first colour is a base over the whole picture, each further colour is one step thick on top of it, over only the pixels at that colour or higher. Dark at the bottom (default), light at the bottom, or as listed. Transparent pixels stay empty, so a cut-out PNG prints as a cut-out.
+- **Output:** a 3MF with one part per colour, assigned to filament slots 1, 2, 3... from the bottom, or a single STL plus the list of heights to change filament at.
+- Layers are traced from one pixel grid, so they register exactly. Code in `shared/js/layered-art.js`, tested in `tests/layered-art.test.mjs`.
+
+### Name Keychain
+
+- **Name to keychain:** any text (two rows with a new line), any of the stamp fonts or your own font file. Letters stand on a plate that follows their outline (a sticker shape), a rounded rectangle, or no plate at all (the letters are the keychain; the page warns when they will print loose).
+- **Loop:** round, rounded square, hexagon, teardrop or lanyard slot, on the left or the top, sunk into the plate's real edge so a ragged outline still joins it. The hole keeps the QR keychain's 2.5 mm wall rule.
+- **Output:** STL, or a 3MF with the plate (slot 1) and letters (slot 2) as separate parts; the filament-change height is shown.
+- Code: `tools/name-keychain/geometry.js`, with the offsetting in `shared/js/offset2d.js`; tested in `tests/name-keychain.test.mjs`.
+
+### Cookie Cutter Maker
+
+- **Shape:** six built-in shapes (circle, rounded square, heart, star, flower, hexagon) or your own PNG / JPG / SVG outline, with smoothing, outline detail and a swap button. Holes can be kept (they get their own wall) or ignored.
+- **Cutter:** the inside of the wall is exactly the cookie size you type. Flange (on the bed), straight wall, and a thin cutting edge at the top; wall, edge, heights and flange are all settable and checked against the nozzle.
+- Warns when a shape is too narrow, too small, or splits into several cutters.
+- Code: `tools/cookie-cutter/geometry.js`; tested in `tests/cookie-cutter.test.mjs`.
+
+### Plant Markers
+
+- **Batch from a list:** one name per line (up to 60; " / " makes two rows), any stamp font or your own. Heads fit their names, or all share the widest width.
+- **Stake:** spike length, width and tip, corner radius, thickness and letter height are settable; the page warns about letters that are too small, stakes too thin for soil, and very wide heads.
+- **One print bed:** markers are laid out in rows that wrap at your bed width, with the set's size and the filament-change height shown.
+- **Output:** one STL or two-part 3MF (stakes / letters) of the whole set, or a ZIP with one STL per marker.
+- Code: `tools/plant-markers/geometry.js`; tested in `tests/plant-markers.test.mjs`.
+
+### Listing Photos
+
+- **Photos from a model:** open an STL, 3MF or OBJ (colours kept, or one colour with a finish: matte, satin, glossy, silk), choose a backdrop (white, soft grey, cream, sage, blush, slate, any colour, or transparent), a soft gradient, shadow strength and brightness.
+- **Angles:** hero, front, side, back, from above and close-up, framed automatically; drag to turn the model and scroll to zoom, and the download uses what you see.
+- **Sizes:** 4:3 at 2000 or 3000 px wide, square, 5:4 and portrait. One PNG, or a ZIP of all six angles.
+- Rendering is in Three.js in the browser; the camera maths is in `shared/js/photo-framing.js` and tested.
+
+### Mesh Checker
+
+- **Before you print or sell a file:** open an STL, 3MF or OBJ and get a verdict (ready / printable with things to look at / problems) and a plain-language list: open edges and holes, edges shared by three or more faces, inside-out or flipped faces, duplicate and zero-area triangles, loose fragments under 1 mm, size against your bed (with presets for common printers), wrong-unit hints, overhangs that need supports, bed contact, and walls thinner than your nozzle or minimum.
+- **Views:** Overhangs shows steep downward faces in red; Thin walls marks the sampled spots in orange. Optionally check it lying on its largest flat face.
+- **Repair:** one button fixes holes, flipped faces and duplicates (the STL / 3MF Modifier's repair) and re-checks; download the result as an STL.
+- Wall thickness is a sample (about 3,000 points cast inwards), not every face, and the page says so. Code in `shared/js/mesh-check.js`, tested in `tests/mesh-check.test.mjs`.
+
+### Magnets and Ornaments
+
+- **Shape:** the cookie cutter's built-in shapes, or the outline of your own picture.
+- **Front:** an optional raised rim, and artwork from text (any stamp font or your own) or a picture (dark areas raised), scaled to fit and kept inside the rim.
+- **Magnet:** none, one in the best spot, or two side by side; the pocket (set your magnet's size and clearance) is on the back, checked to leave a wall, with a note on printing and gluing it.
+- **Ornament:** an optional loop at the top (five styles), shared with the name keychain.
+- **Output:** STL, or a 3MF with the plate and the raised parts as two filament slots. Code in `tools/magnets/geometry.js`, tested in `tests/magnets.test.mjs`.
+
+### Plate Nester
+
+- **Several files at once:** add any number of STL / 3MF / OBJ files (or drop them on the preview), set copies for each, and see them arranged on your bed (presets for common printers, or any size).
+- **Real outlines:** each model's footprint is measured, so an L-shaped piece or a ring leaves room for small ones beside or inside it. Models are turned in quarter, eighth or 15-degree steps (or not at all), with spacing and edge margin you set.
+- **Fill the plate:** set a model's copies to 0 to fill whatever room is left with copies of it (handy for coins, keychains and tags).
+- **More than one plate:** whatever does not fit goes on plate 2, 3 and so on. A model too big for the bed is named, with advice.
+- **Output:** a 3MF per plate with one part per model part, colours kept and filament slots by colour, an STL of the plate, or all plates in a ZIP. The plate is centred so a slicer opens it in the middle.
+- Code in `shared/js/nest.js`, tested in `tests/nest.test.mjs`.
+
+### Gridfinity Bins and Baseplates
+
+- **Standard sizes:** 1-8 units each way (42 mm pitch, 41.5 mm bin) and 2-12 height units of 7 mm, with the standard stepped foot (0.8 mm chamfer, 1.8 mm straight, 2.15 mm chamfer) and 3.75 mm corners, so it fits any standard baseplate. Quick-start sizes included.
+- **Compartments and scoop:** 1-8 compartments each way with a divider thickness you set, and an optional curved scoop at the front of each.
+- **Stacking lip and magnets:** a lip built from the foot's own profile (0.25 mm clearance, 45 degree printable underside), and optional 6.5 x 2.4 mm magnet holes, four per cell.
+- **Numbers shown:** size in mm, compartment size and depth, and about how many grams of PLA it takes.
+- **Baseplates:** 1-12 cells each way, 42 mm a cell, every cell a pocket cut to the stacking lip's profile (so a bin's foot fits it by the same numbers, with 0.25 mm clearance all round), optional magnet holes in the pocket floor (the floor is raised to 3.2 mm to fit them), and a warning with the number of cells your printer's bed takes.
+- **Output:** STL or 3MF. Send several bins to the Plate Nester to print a set. Code in `tools/gridfinity/`, tested in `tests/gridfinity.test.mjs`.
 
 ### STL / 3MF Modifier
 
@@ -44,6 +131,9 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 - **Hook-and-loop (chain link) or ball-and-socket joints that print assembled.** Every cut gets a joint where the biggest circle fits the cross-section; a V-notch is removed around it so the pieces can tilt. Hook and loop (the default) puts a closed loop on each segment and links the two at right angles like a chain, so each pair swings and twists; the segments end up a link-length apart. Ball and socket puts a ball on a short neck on one segment and a cup over it on the next, like an articulated figure. Where a cut crosses several separate pieces (two legs, say) each gets its own joint; pieces too thin for one stay solid, with a warning.
 - **Colours are maintained.** Every part keeps its colour in every segment (a painted model is cut whole, then each result triangle takes the colour of the painted surface it came from, so cut faces and joints are coloured to match), and a joint takes the colour of the part it grows out of. Download the 3MF for colours and filament slots (an STL merges everything).
 - **Try the bend:** after making it, a slider in the preview tilts the segments about their real joint centres so you can see the joints move. It is only a picture (the download is the straight model).
+- **Place the cuts by hand, in any direction:** click the model to add a cut there (across the axis chosen in "New cuts go across"), drag a cut plane to move it, double-click a plane to remove it; drag anywhere else to orbit. A list under the preview gives every cut its own axis (X, Y or Z), position and two tilts (A and B, about the other two axes, up to 60 degrees), with remove buttons, "Add a cut" and "Reset to even cuts". Cuts snap to 0.5 mm, and cuts in the same direction stay at least 6 mm apart.
+- **Cuts that follow a body:** when the cuts are not all parallel and straight, each one works on the piece you clicked, in the order you placed them, so the segments form a tree (a tail bent one way, a leg another, a curved snake cut square to its length) and the bend slider moves each joint about its own axis. Each cut slices every part of the piece it works on. A joint's size is limited by the nearest other cut, and a cut that would pass through an earlier joint is refused with a message.
+- **Joint test strip:** a button that needs no model: three small bars with the page's joint settings at the clearance minus 0.1, the clearance, and plus 0.1 mm (marked with 1, 2 and 3 bumps), to print in about 15 minutes and find the clearance your printer needs before printing a whole model.
 - **Tuning:** bend per joint (reduced with a message when the pieces are too short), ball size or bar thickness, and joint clearance. The model is laid on its side for printing by default so the joint gaps are vertical.
 - **Fix the model:** a box appears when a part is not watertight or the model is heavy. *Repair open edges* closes small gaps and cracks (undoable); parts that are colour patches of one painted surface are repaired together as the one solid they make, and keep their colours. *Reduce triangles* merges tiny edges down to a target count (default 100,000) while never moving the surface more than the distance you set (default 0.2 mm); a 1.9-million-triangle AI model drops to about 80,000 with a change of about 0.1 % of its size. Left empty, the limit is 0.15 % of the model's longest side. It only works on closed parts, and the page names any part it could not close. Models over 150,000 triangles are slow to cut, and over 600,000 are refused until reduced.
 - Uses [manifold-3d](https://github.com/elalish/manifold) (downloaded when you press the button) and needs closed (watertight) parts. Tested by tilting the finished pieces and checking they never touch, and that the ball cannot be pulled out of its socket. Not yet test-printed: expect to tune the clearance for your printer.
@@ -67,6 +157,7 @@ The list shown on the home page comes from [tools/registry.json](tools/registry.
 ### QR Code Keychain
 
 - Link or text to QR (error correction L/M/Q/H, module size, quiet zone), raised or engraved.
+- **Flat QR image:** download the code as a PNG or SVG (your QR and plate colours, 4-module quiet zone) as well as the 3D files. The QR Code Stand has the same buttons.
 - **Six loop styles**, above or below the code: round ring, rounded square, hexagon, teardrop, lanyard slot (a slot hole for a strap), and a full-width header with a hole. Every style keeps at least 2.5 mm of wall around the hole.
 - **Full-width header options:** the outline can be a rectangle, a true semicircle, or a triangle leaning left or right (adjustable lean), with adjustable corner rounding, and you can move the hole left/right and up/down. Moving the hole too close to an edge, off the shape, or into the plate gives a clear message instead of a weak or blocked hole.
 - **Scan check:** the model's own geometry is decoded in the page, so you know the code is readable before printing.

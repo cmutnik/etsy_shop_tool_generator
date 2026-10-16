@@ -1,0 +1,91 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Mesh Checker - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="../../">Etsy Shop Tools</a>
+    <nav id="toolnav" aria-label="Tools"></nav>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Model</legend>
+        <label>Open an STL, 3MF or OBJ file
+          <input type="file" id="file" accept=".stl,.3mf,.obj,.mtl" multiple>
+        </label>
+        <small class="muted">Or drag a file onto the preview. The file is read in your browser and never uploaded.</small>
+        <label>The file's units
+          <select id="unit"><option value="1" selected>Millimetres</option><option value="10">Centimetres</option><option value="25.4">Inches</option></select>
+        </label>
+        <label class="inline"><input type="checkbox" id="layFlat"> Check it lying on its largest flat face</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Your printer</legend>
+        <label>Bed size
+          <select id="bedPreset"></select>
+        </label>
+        <div class="row">
+          <label>X (mm) <input type="number" id="bedX" value="220" min="20" max="2000"></label>
+          <label>Y (mm) <input type="number" id="bedY" value="220" min="20" max="2000"></label>
+          <label>Z (mm) <input type="number" id="bedZ" value="250" min="20" max="2000"></label>
+        </div>
+        <div class="row">
+          <label>Nozzle (mm) <input type="number" id="nozzle" value="0.4" min="0.1" max="1.5" step="0.1"></label>
+          <label>Thinnest wall (mm) <input type="number" id="minWall" value="0.8" min="0.2" max="5" step="0.1"></label>
+        </div>
+        <label>Supports needed beyond (degrees from vertical)
+          <input type="number" id="overhang" value="45" min="20" max="80" step="5">
+        </label>
+        <small class="muted">45 degrees is the usual slicer default. Thinnest wall defaults to two nozzle widths.</small>
+      </fieldset>
+
+      <div class="row"><button id="repair" class="primary secondary" type="button" hidden>Repair the model</button></div>
+      <div class="row"><button id="download" class="primary" type="button" disabled>Download STL</button></div>
+      <div id="repairReport" class="info"></div>
+      <div id="error" class="error" hidden></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar">
+        <button data-mode="normal" class="active">Model</button>
+        <button data-mode="overhang">Overhangs</button>
+        <button data-mode="thin">Thin walls</button>
+        <span id="status" class="status">Open a model to check it.</span>
+      </div>
+      <div id="viewport"></div>
+      <div id="verdict" class="verdict" hidden></div>
+      <ul id="findings" class="findings"></ul>
+      <div id="info" class="info"></div>
+      <details class="tips">
+        <summary>What is checked, and what is not</summary>
+        <ul>
+          <li><b>Holes and bad geometry:</b> open edges, edges shared by three or more faces, inside-out and flipped faces, duplicates, zero-area triangles, tiny floating fragments. Most slicers print a model with these badly or not at all.</li>
+          <li><b>Size:</b> fits the bed (also turned a quarter turn), and a hint when the units look wrong.</li>
+          <li><b>Overhangs:</b> faces that point down more than the angle you set, apart from the ones on the bed. These need supports. Red in the Overhangs view.</li>
+          <li><b>Thin walls:</b> a ray is cast inward from about 3,000 spread-out points on the surface and measures how far it travels to the opposite wall. This is a sample, not every face, so a very thin fin can slip through. Orange dots in the Thin walls view. Only works on a closed model.</li>
+          <li><b>Not checked:</b> how your slicer will treat bridges, tiny details below the nozzle width, whether the model is strong enough, or whether the print will warp. Always preview the sliced layers.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="mesh-checker.js"></script>
+  <script type="module" src="../../shared/js/nav.js"></script>
+</body>
+</html>

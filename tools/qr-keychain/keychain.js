@@ -3,6 +3,8 @@ import jsQR from 'jsqr';
 import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
 import { rasterizeTopDown, rasterizeBottomUp } from '../../shared/js/qr-plate.js';
+import { qrMatrix } from '../../shared/js/qr-plate.js';
+import { qrSvgBlob, qrPngBlob } from '../../shared/js/qr-image.js';
 import { buildKeychain } from './geometry.js';
 import { LOOP_STYLES, HEADER_SHAPES, loopStyle } from './loops.js';
 
@@ -59,7 +61,7 @@ function readParams() {
 function showError(msg) {
   $('error').hidden = !msg;
   $('error').textContent = msg || '';
-  $('download').disabled = $('download3mf').disabled = !!msg;
+  $('download').disabled = $('download3mf').disabled = $('downloadPng').disabled = $('downloadSvg').disabled = !!msg;
 }
 
 function rebuild() { clearTimeout(timer); timer = setTimeout(build, 120); }
@@ -125,3 +127,8 @@ $('download').addEventListener('click', () => downloadBlob(exportSTL(model), `qr
 $('download3mf').addEventListener('click', () => downloadBlob(export3MF(model, { title: 'QR keychain', parts: [{ name: 'base', label: 'Plate' }, { name: 'qr', label: 'QR code' }] }), `qr-keychain-${slug()}.3mf`));
 
 build();
+
+const qrImageOpts = () => ({ dark: $('qrColor').value, light: $('baseColor').value });
+const qrImageMatrix = () => qrMatrix($('data').value, $('errorCorrection').value);
+$('downloadPng').addEventListener('click', async () => downloadBlob(await qrPngBlob(qrImageMatrix(), qrImageOpts()), `qr-${slug()}.png`));
+$('downloadSvg').addEventListener('click', () => downloadBlob(qrSvgBlob(qrImageMatrix(), qrImageOpts()), `qr-${slug()}.svg`));

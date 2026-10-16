@@ -1,0 +1,104 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Plate Nester - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="../../">Etsy Shop Tools</a>
+    <nav id="toolnav" aria-label="Tools"></nav>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Models</legend>
+        <label>Add STL, 3MF or OBJ files (pick several at once, or add more later)
+          <input type="file" id="file" accept=".stl,.3mf,.obj,.mtl" multiple>
+        </label>
+        <small class="muted">Files are read in your browser and never uploaded. For a coloured OBJ pick the .obj and its .mtl together.</small>
+        <label>The files' units
+          <select id="unit"><option value="1" selected>Millimetres</option><option value="10">Centimetres</option><option value="25.4">Inches</option></select>
+        </label>
+        <ul id="items" class="items"></ul>
+        <small class="muted" id="itemsHint" hidden>Copies: how many of each to print. 0 means "as many as fit on the first plate, after the rest".</small>
+        <button type="button" id="clear" class="small" hidden>Remove all</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Your printer</legend>
+        <label>Bed size <select id="bedPreset"></select></label>
+        <div class="row">
+          <label>Width X (mm) <input type="number" id="bedX" value="220" min="40" max="1000"></label>
+          <label>Depth Y (mm) <input type="number" id="bedY" value="220" min="40" max="1000"></label>
+        </div>
+        <div class="row">
+          <label>Space between (mm) <input type="number" id="spacing" value="4" min="0" max="30" step="0.5"></label>
+          <label>Edge margin (mm) <input type="number" id="edge" value="3" min="0" max="30" step="0.5"></label>
+        </div>
+        <small class="muted">Leave room for a brim: 3-5 mm between parts is usual, more if you print with a brim or skirt.</small>
+      </fieldset>
+
+      <fieldset>
+        <legend>How to arrange</legend>
+        <label>Turning
+          <select id="turning">
+            <option value="90" selected>Quarter turns (fast)</option>
+            <option value="45">Eighth turns (tighter)</option>
+            <option value="15">Every 15 degrees (tightest, slower)</option>
+            <option value="0">Never turn</option>
+          </select>
+        </label>
+        <label>Fit
+          <select id="cell"><option value="2" selected>Normal (2 mm grid)</option><option value="1">Fine (1 mm grid, slower)</option></select>
+        </label>
+        <label class="inline"><input type="checkbox" id="layFlat"> Turn each model onto its largest flat face first</label>
+        <small class="muted">Off keeps each model the way it was saved. Nesting only turns models about the vertical axis, so overhangs stay as they were.</small>
+      </fieldset>
+
+      <div class="row"><button id="download" class="primary" disabled>Download this plate (3MF)</button></div>
+      <div class="row"><button id="downloadStl" class="primary secondary" type="button" disabled>This plate as STL</button><button id="downloadAll" class="primary secondary" type="button" disabled>All plates (ZIP)</button></div>
+      <div id="error" class="error" hidden></div>
+      <div id="warnings"></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar">
+        <span id="plateButtons" class="platebuttons"></span>
+        <button data-view="top">Top view</button>
+        <button data-view="print" class="active">3D view</button>
+        <span id="status" class="status">Add some models to arrange.</span>
+      </div>
+      <div id="viewport"></div>
+      <div id="info" class="info"></div>
+      <ul id="summary" class="summary"></ul>
+      <details class="tips" open>
+        <summary>Tips</summary>
+        <ul>
+          <li><b>Real shapes, not boxes:</b> each model's outline is measured and the next one is slid into the first free spot, so an L-shaped piece or a ring leaves room for small ones beside or inside it. It also tries turning each one.</li>
+          <li><b>Colours:</b> the 3MF keeps one part per model part with its colour and a filament slot (same colour, same slot), so a multi-colour plate prints as it was designed. Use the STL for a single-colour print.</li>
+          <li><b>Several plates:</b> when everything does not fit, the rest goes on plate 2, 3 and so on. "All plates" gives one 3MF per plate in a ZIP.</li>
+          <li><b>In your slicer:</b> the set is centred on the bed, so open it and print. If your slicer re-arranges on import, turn auto-arrange off for this file.</li>
+          <li><b>Tall and short mixed:</b> printing a plate of tall and short parts together takes as long as the tallest, and a tall one can knock a short one over. Large height differences are better split into their own plates.</li>
+          <li><b>Tight fits are estimates:</b> the outline grid is cautious by up to 2 mm per side. Print a first plate with spacing 4 mm or more, and check your slicer preview.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="plate-nester.js"></script>
+  <script type="module" src="../../shared/js/nav.js"></script>
+</body>
+</html>

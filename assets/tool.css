@@ -56,3 +56,43 @@ button.primary.secondary:hover { background: var(--bg); }
 .controls input[type=color] { display: block; width: 100%; height: 34px; margin-top: 3px; padding: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 button.small { padding: 4px 10px; font-size: 13px; margin-top: 8px; }
 [hidden] { display: none !important; }   /* so the hidden attribute wins over display rules like .muted { display: block } */
+.litwrap { background: #111; border: 1px solid var(--line); border-radius: 10px; padding: 12px; text-align: center; }
+.litwrap canvas { max-width: 100%; max-height: min(60vh, 560px); image-rendering: auto; background: #000; }
+.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+.swatches input[type=color] { margin-top: 0; }
+.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--line); margin-right: 8px; vertical-align: -1px; }
+.verdict { border-radius: 8px; padding: 10px 14px; font-weight: 600; margin: 12px 0 8px; }
+.verdict.ready { background: #e4f4e4; color: #1d5a1d; }
+.verdict.caution { background: var(--warn-bg); color: var(--warn-text); }
+.verdict.problem { background: #fde8e8; color: #7a1010; }
+@media (prefers-color-scheme: dark) { .verdict.ready { background: #1d3a1d; color: #bff0bf; } .verdict.problem { background: #4a1d1d; color: #ffc9c9; } }
+.findings { list-style: none; padding: 0; margin: 0 0 12px; }
+.findings .f { background: var(--panel); border: 1px solid var(--line); border-left-width: 4px; border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; font-size: 14px; }
+.findings .f.bad { border-left-color: #c93030; } .findings .f.warn { border-left-color: #e0a100; } .findings .f.ok { border-left-color: #3a9a3a; } .findings .f.info { border-left-color: #6b8ba4; }
+.findings .ft { font-weight: 600; }
+.findings .fd, .findings .ff { color: var(--muted); margin-top: 4px; }
+.findings .badge { display: inline-block; min-width: 22px; text-align: center; margin-right: 8px; padding: 0 5px; border-radius: 10px; font-size: 12px; background: var(--line); color: var(--text); }
+#viewport.drop { outline: 2px dashed var(--accent); }
+.stage { display: flex; justify-content: center; }
+.stage.drop { outline: 2px dashed var(--accent); }
+.frame { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: repeating-conic-gradient(#d8d8d8 0% 25%, #f2f2f2 0% 50%) 50% / 20px 20px; }
+.frame canvas { display: block; }
+.viewgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.viewgrid button { padding: 6px 8px; font-size: 13px; }
+.viewgrid button.active { border-color: var(--accent); color: var(--accent-dark); font-weight: 600; }
+.items { list-style: none; padding: 0; margin: 10px 0 0; }
+.items li { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.items .iname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.items input[type=number] { width: 64px; margin: 0; padding: 4px 6px; }
+.items button { padding: 2px 9px; }
+.summary { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.summary li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 2px 10px; font-size: 13px; }
+.platebuttons { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.platebuttons button.active { border-color: var(--accent); color: var(--accent-dark); font-weight: 600; }
+.cutlist { list-style: none; padding: 0; margin: 8px 0 4px; }
+.cutlist li, .cuthead { display: grid; grid-template-columns: 44px 52px 1fr 54px 54px 30px; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 13px; }
+.cuthead { color: var(--muted); font-size: 12px; margin: 8px 0 4px; }
+.cutlist { margin-top: 0; }
+.cutlist li span { color: var(--muted); }
+.cutlist input[type=number], .cutlist select { margin: 0; padding: 4px 4px; min-width: 0; width: 100%; }
+.cutlist button { padding: 2px 8px; }

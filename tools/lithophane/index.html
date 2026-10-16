@@ -1,0 +1,91 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Lithophane Maker - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="../../">Etsy Shop Tools</a>
+    <nav id="toolnav" aria-label="Tools"></nav>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Picture</legend>
+        <label>Photo (PNG, JPG, WebP or SVG)
+          <input type="file" id="file" accept="image/*,.svg">
+        </label>
+        <small class="muted" id="source">Showing a sample picture. Choose your own photo above. It never leaves your browser.</small>
+        <label class="inline"><input type="checkbox" id="invert"> Negative (light areas thick; for light-on-dark pictures)</label>
+        <div class="row">
+          <label>Contrast curve <input type="number" id="gamma" value="1" min="0.4" max="2.5" step="0.1"></label>
+          <label>Smoothing <input type="number" id="smooth" value="0" min="0" max="4" step="1"></label>
+        </div>
+        <small class="muted">Contrast curve above 1 darkens the mid-tones (more shading in faces and skies); below 1 lightens them. Smoothing softens grain and stair-steps.</small>
+      </fieldset>
+
+      <fieldset>
+        <legend>Plate</legend>
+        <div class="row">
+          <label>Picture width (mm) <input type="number" id="widthMm" value="100" min="20" max="250" step="5"></label>
+          <label>Frame (mm) <input type="number" id="frameMm" value="3" min="0" max="15" step="0.5"></label>
+        </div>
+        <div class="row">
+          <label>Thinnest (mm) <input type="number" id="minThickness" value="0.8" min="0.4" max="3" step="0.2"></label>
+          <label>Thickest (mm) <input type="number" id="maxThickness" value="3.2" min="1" max="6" step="0.2"></label>
+        </div>
+        <label>Cell size (mm) <input type="number" id="pixelMm" value="0.4" min="0.2" max="1" step="0.05"></label>
+        <small class="muted">Smaller cells keep more detail but make a bigger file. 0.4 mm matches a standard nozzle. Thin areas pass the most light (bright); thick areas pass the least (dark). 0.8 to 3.2 mm suits white PLA and most lamps.</small>
+        <label>Curve (degrees; 0 = flat)
+          <input type="range" id="curve" min="0" max="270" step="5" value="0">
+          <span id="curveLabel" class="muted-inline">flat</span>
+        </label>
+        <small class="muted">A curved plate stands up on its own and wraps round a lamp, with the light on the inside of the curve.</small>
+        <label>Preview colour <input type="color" id="color" value="#f3efe6"></label>
+      </fieldset>
+
+      <div class="row"><button id="download" class="primary">Download STL</button></div>
+      <div id="error" class="error" hidden></div>
+      <div id="warnings"></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar">
+        <button data-view="lit" class="active">Backlit preview</button>
+        <button data-view="3d">3D view</button>
+        <span id="status" class="status"></span>
+      </div>
+      <div id="litWrap" class="litwrap"><canvas id="lit"></canvas></div>
+      <div id="viewport" hidden></div>
+      <div id="info" class="info"></div>
+      <details class="tips" open>
+        <summary>Printing tips</summary>
+        <ul>
+          <li><b>Orientation:</b> print it <b>standing up</b>, exactly as exported (the bottom edge is on the bed, the smooth face towards you). Lying flat gives visible layer lines across the image.</li>
+          <li><b>Filament:</b> plain <b>white</b> PLA, matte if you can. Colour and translucent filament changes the glow. Use a fresh, dry spool.</li>
+          <li><b>Settings:</b> 0.4 mm nozzle, <b>0.08-0.12 mm layers</b>, 100% infill (the plate has no inside), 3+ walls, slow outer walls, no supports. A brim helps a tall flat plate stay on the bed. Turn off "ironing" and any top-surface fuzzy skin.</li>
+          <li><b>Test the lamp:</b> use a bright, cool LED (a phone torch works). Warm or dim lights flatten the shading. Hold the plate a few cm in front of the light.</li>
+          <li><b>Backlit preview:</b> this is a quick simulation (light fades with thickness), not exact. A real print is slightly softer than the preview.</li>
+          <li><b>Selling it:</b> a photo of someone else's face or a famous picture can carry copyright and privacy obligations. Check you have permission before listing custom lithophanes.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="lithophane.js"></script>
+  <script type="module" src="../../shared/js/nav.js"></script>
+</body>
+</html>

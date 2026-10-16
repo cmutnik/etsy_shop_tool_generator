@@ -23,8 +23,15 @@ export function difference(subject, ...clips) {
   return polygonClipping.difference(norm(subject), ...clips.map(norm));
 }
 
+/** Overlap of the subject with every clip. Returns a MultiPolygon. */
+export function intersection(subject, ...clips) {
+  const norm = s => (typeof s[0][0] === 'number' ? poly(s) : s);
+  return polygonClipping.intersection(norm(subject), ...clips.map(norm));
+}
+
 /** MultiPolygon -> groups ({ outer, holes }), dropping the closing duplicate point of each ring. */
 export function multiPolygonToGroups(mp) {
+  if (!mp.length) return [];
   const open = ring => ring.slice(0, -1);
   return asMulti(mp).map(([outer, ...holes]) => ({ outer: open(outer), holes: holes.map(open) }));
 }

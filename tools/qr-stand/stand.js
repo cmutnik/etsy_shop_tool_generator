@@ -2,7 +2,8 @@
 import jsQR from 'jsqr';
 import { createViewer } from '../../shared/js/viewer.js';
 import { exportSTL, export3MF, downloadBlob } from '../../shared/js/export.js';
-import { rasterizeTopDown } from '../../shared/js/qr-plate.js';
+import { rasterizeTopDown, qrMatrix } from '../../shared/js/qr-plate.js';
+import { qrSvgBlob, qrPngBlob } from '../../shared/js/qr-image.js';
 import { loadFont, parseFont, populateFontSelect, FONTS } from '../../shared/js/fonts.js';
 import { ICON_NAMES } from '../../shared/js/icons.js';
 import { buildStand, centered } from './geometry.js';
@@ -47,7 +48,7 @@ function readParams() {
 function showError(msg) {
   $('error').hidden = !msg;
   $('error').textContent = msg || '';
-  $('downloadPlate').disabled = $('downloadPlate3mf').disabled = $('downloadBase').disabled = !!msg;
+  $('downloadPlate').disabled = $('downloadPlate3mf').disabled = $('downloadBase').disabled = $('downloadPng').disabled = $('downloadSvg').disabled = !!msg;
 }
 
 function syncUI() {
@@ -120,3 +121,8 @@ $('downloadPlate3mf').addEventListener('click', () => downloadBlob(export3MF(mod
 $('downloadBase').addEventListener('click', () => downloadBlob(exportSTL(model.stand.base), `qr-stand-base-${slug()}.stl`));
 
 selectFont();
+
+const qrImageOpts = () => ({ dark: $('qrColor').value, light: $('baseColor').value });
+const qrImageMatrix = () => qrMatrix($('data').value, $('errorCorrection').value);
+$('downloadPng').addEventListener('click', async () => downloadBlob(await qrPngBlob(qrImageMatrix(), qrImageOpts()), `qr-${slug()}.png`));
+$('downloadSvg').addEventListener('click', () => downloadBlob(qrSvgBlob(qrImageMatrix(), qrImageOpts()), `qr-${slug()}.svg`));

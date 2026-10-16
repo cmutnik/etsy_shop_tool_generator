@@ -1,0 +1,109 @@
+<!-- Copyright (c) 2025 cmutnik -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Name Keychain - Etsy Shop Tools</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+  <link rel="stylesheet" href="../../assets/tool.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+      "opentype.js": "https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.js",
+      "polygon-clipping": "https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="site">
+    <a class="brand" href="../../">Etsy Shop Tools</a>
+    <nav id="toolnav" aria-label="Tools"></nav>
+  </header>
+  <main class="tool-layout">
+    <section class="controls" id="controls">
+      <fieldset>
+        <legend>Name</legend>
+        <label>Text (a new line starts a second row)
+          <textarea id="text" rows="2" spellcheck="false">Emma</textarea>
+        </label>
+        <label>Font
+          <select id="font"></select>
+        </label>
+        <label>Or upload a font <small>(.ttf .otf .woff)</small>
+          <input type="file" id="fontFile" accept=".ttf,.otf,.woff">
+        </label>
+        <div class="row">
+          <label>Letter height (mm) <input type="number" id="fontSize" value="14" min="4" max="60" step="0.5"></label>
+          <label>Line spacing <input type="number" id="lineSpacing" value="1.2" min="0.8" max="2" step="0.05"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Plate</legend>
+        <label>Plate shape
+          <select id="backing"></select>
+        </label>
+        <div class="row">
+          <label>Plate margin (mm) <input type="number" id="margin" value="2.5" min="1" max="10" step="0.5"></label>
+          <label id="cornerRow">Corner radius (mm) <input type="number" id="cornerRadius" value="3" min="0" max="15" step="0.5"></label>
+        </div>
+        <div class="row">
+          <label>Plate thickness (mm) <input type="number" id="thickness" value="2.4" min="1" max="6" step="0.2"></label>
+          <label>Letters stand (mm) <input type="number" id="raise" value="0.8" min="0.4" max="3" step="0.2"></label>
+        </div>
+        <div class="row">
+          <label>Plate colour <input type="color" id="baseColor" value="#ffffff"></label>
+          <label>Letter colour <input type="color" id="textColor" value="#c0392b"></label>
+        </div>
+        <small class="muted" id="plateNote"></small>
+      </fieldset>
+
+      <fieldset>
+        <legend>Keyring loop</legend>
+        <div class="row">
+          <label>Loop position
+            <select id="loopPosition"><option value="left">Left</option><option value="top">Top</option><option value="none">No loop</option></select>
+          </label>
+          <label>Loop style <select id="loopStyle"></select></label>
+        </div>
+        <div class="row">
+          <label>Loop size (mm) <input type="number" id="loopSize" value="12" min="8" max="25" step="0.5"></label>
+          <label>Hole diameter (mm) <input type="number" id="holeDiameter" value="4.5" min="3" max="12" step="0.5"></label>
+        </div>
+      </fieldset>
+
+      <div class="row"><button id="download" class="primary">Download STL</button><button id="download3mf" class="primary secondary">Download 3MF (2 parts)</button></div>
+      <div id="error" class="error" hidden></div>
+      <div id="warnings"></div>
+    </section>
+
+    <section class="preview">
+      <div class="viewbar">
+        <button data-view="print" class="active">3D view</button>
+        <button data-view="top">Top view</button>
+        <span id="status" class="status">Loading font...</span>
+      </div>
+      <div id="viewport"></div>
+      <div id="info" class="info"></div>
+      <details class="tips" open>
+        <summary>Printing tips</summary>
+        <ul>
+          <li><b>Orientation:</b> print flat, exactly as exported, with no supports. The letters are on the top surface.</li>
+          <li><b>Two colours:</b> add one filament change at the height shown above (the plate's top). With the 3MF, load the plate colour in slot 1 and the letter colour in slot 2; the colours here are only a preview.</li>
+          <li><b>Strokes:</b> letters stand 0.8 mm (4 layers at 0.2 mm) so they read clearly. Thin script fonts need a letter height of 12 mm or more to print cleanly with a 0.4 mm nozzle.</li>
+          <li><b>Letters only (no plate):</b> every letter must touch the next, or the keychain falls apart. Script fonts join; block fonts do not. Pick a plate for those.</li>
+          <li><b>Loop:</b> the hole needs at least 2.5 mm of wall all round. 4.5 mm holes take most split rings.</li>
+          <li><b>Selling it:</b> names are personal; typing the customer's name here and exporting takes about a minute. Check a font's licence if you sell the prints commercially. The listed fonts are open-source.</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+  <script type="module" src="name-keychain.js"></script>
+  <script type="module" src="../../shared/js/nav.js"></script>
+</body>
+</html>
